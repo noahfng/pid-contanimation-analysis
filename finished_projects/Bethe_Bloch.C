@@ -1,0 +1,137 @@
+#include <TSystemDirectory.h>
+#include <TSystemFile.h>
+#include <TChain.h>
+#include <TFile.h>
+#include <TKey.h>
+#include <TCanvas.h>
+#include <TH2F.h>
+#include <TGraph.h>
+#include <TLegend.h>
+#include <TMath.h>
+#include <vector>
+
+Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
+    Double_t beta = bg / TMath::Sqrt(1.0 + bg*bg);
+    Double_t aa   = TMath::Power(beta, p4);
+    Double_t bb   = TMath::Log(p3 + TMath::Power(1.0/bg, p5));
+    return (p2 - aa - bb) * p1 / aa;
+}
+
+Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
+    const Double_t mMIP = 50.0;
+    const Double_t params[5] = {0.19310481, 4.26696118, 0.00522579, 2.38124907, 0.98055396};
+    const Double_t chFact = 2.3;
+
+    Double_t bg = p / mass;
+    if (bg < 0.05) return -999.;
+    Double_t bethe = mMIP
+                   * bethe_bloch_aleph(bg,
+                                       params[0], params[1], params[2],
+                                       params[3], params[4])
+                   * TMath::Power(charge, chFact);
+    return bethe >= 0 ? bethe : -999.;
+}
+
+void AddTrees(TChain &chain, const char* baseDir) {
+    TSystemDirectory dir("base", baseDir);
+    TList *subdirs = dir.GetListOfFiles();
+    TSystemFile *sysfile;
+    TIterator *itSub = subdirs->MakeIterator();
+    while ((sysfile = (TSystemFile*)itSub->Next())) {
+        TString dname = sysfile->GetName();
+        if (!sysfile->IsDirectory() || !dname.BeginsWith("hy_")) continue;
+        TString fullDir = TString(baseDir) + "/" + dname;
+
+        TSystemDirectory subdir(dname, fullDir);
+        TList *files = subdir.GetListOfFiles();
+        TSystemFile *f2;
+        TIterator *itFile = files->MakeIterator();
+        while ((f2 = (TSystemFile*)itFile->Next())) {
+            TString fname = f2->GetName();
+            if (!fname.BeginsWith("RLAnalysisTree") || !fname.EndsWith(".root")) continue;
+            TString path = fullDir + "/" + fname;
+
+            TFile tf(path, "READ");
+            if (tf.IsZombie()) { tf.Close(); continue; }
+            TIterator *itKey = tf.GetListOfKeys()->MakeIterator();
+            TKey *key;
+            while ((key = (TKey*)itKey->Next())) {
+                TString keyName = key->GetName();
+                if (keyName.BeginsWith("DF_")) {
+                    chain.Add(path + "/" + keyName + "/O2tautwotrack");
+                    break;
+                }
+            }
+            delete itKey;
+            tf.Close();
+        }
+        delete itFile;
+    }
+    delete itSub;
+}
+
+void Bethe_Bloch() {
+    gStyle->SetPalette(kRainBow);
+    const char* base_dir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
+    TChain chain("twotauchain");
+    AddTrees(chain, base_dir);
+
+    chain.SetBranchStatus("*", 0);
+    Float_t inner[2];
+    Float_t signal[2];
+    chain.SetBranchStatus("fTrkTPCinnerParam", 1);
+    chain.SetBranchStatus("fTrkTPCsignal",     1);
+    chain.SetBranchAddress("fTrkTPCinnerParam", inner);
+    chain.SetBranchAddress("fTrkTPCsignal",     signal);
+
+    Int_t nEntries = chain.GetEntries();
+    nEntries = std::min(nEntries, static_cast<Int_t>(1e6));
+    const Int_t nPoints = 500;
+    const Double_t pMin = 0.3, pMax = 5.0;
+    const Double_t step = (pMax - pMin) / nPoints;
+    TH2F *hist = new TH2F("dedx_vs_p1",
+                          "TPC dE/dx vs p;p [GeV/c];dE/dx [arb.u.]",
+                          250, pMin, pMax,
+                          100,   0, 120);
+    for (Int_t i=0; i<nEntries; ++i) {
+        chain.GetEntry(i);
+        if (inner[0]>0 && signal[0]>0) hist->Fill(inner[0], signal[0]);
+        if (inner[1]>0 && signal[1]>0) hist->Fill(inner[1], signal[1]);
+    }
+
+    const Int_t nParts = 5;
+    const TString names[nParts]   = {"pi","K","p","mu","e"};
+    const Double_t masses[nParts] = {139.57039, 493.677, 938.27208816, 105.6583755, 0.51099895};
+    const Double_t charges[nParts]= {1,1,1,1,1};
+    const Int_t colors[nParts]    = {kBlue, kRed, kGreen+2, kOrange+7, kViolet};
+
+    TCanvas *c = new TCanvas("c","dE/dx vs p (tracks)",800,600); 
+    c->SetLogz(); 
+    c->SetLogx();
+    c->SetGrid();
+    hist->SetStats(false);
+    hist->Draw("COLZ");
+
+    TLegend *leg = new TLegend(0.83, 0.10, 0.98, 0.30);
+    leg->SetBorderSize(0); 
+    leg->SetFillStyle(0);
+
+    for (Int_t i=0; i<nParts; ++i) {
+        TGraph *g = new TGraph();
+        g->SetLineColor(colors[i]);
+        g->SetLineWidth(2);
+        Int_t idx=0;
+        for (Int_t j=0; j<=nPoints; ++j) {
+            Double_t pG = pMin + j*step;
+            Double_t pM = pG * 1000.;
+            Double_t d  = get_expected_signal(pM, masses[i], charges[i]);
+            if (d<0 || TMath::IsNaN(d)) continue;
+            g->SetPoint(idx++, pG, d);
+        }
+        g->Draw("L SAME");
+        leg->AddEntry(g, names[i], "l");
+    }
+    leg->Draw();
+
+    c->Print("Bethe_Bloch.pdf");
+}
