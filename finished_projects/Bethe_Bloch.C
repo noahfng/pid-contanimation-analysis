@@ -85,7 +85,7 @@ void Bethe_Bloch() {
     chain.SetBranchAddress("fTrkTPCsignal",     signal);
 
     Int_t nEntries = chain.GetEntries();
-    nEntries = std::min(nEntries, static_cast<Int_t>(1e6));
+    nEntries = std::min(nEntries, static_cast<Int_t>(1e9));
     const Int_t nPoints = 500;
     const Double_t pMin = 0.3, pMax = 5.0;
     const Double_t step = (pMax - pMin) / nPoints;

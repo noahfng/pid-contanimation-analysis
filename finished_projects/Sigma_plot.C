@@ -246,6 +246,5 @@ void Sigma_plot() {
     }
 
     c.Print(Form("%s]",pdf));
-    std::cout<<"Done - output in "<<pdf<<std::endl;
 }
 
