@@ -11,29 +11,19 @@
 #include <algorithm>        
 #include "finished_projects/AddTrees.h"
 
-void Calculate_Invariant_Mass() {
+void Invariant_Mass_Plot() {
     gROOT->SetBatch(kTRUE); 
     gStyle->SetOptStat(1);
-    gStyle->SetPalette(kRainBow);
     const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     const bool applyTPCnSigmaFilter = true;
     const Float_t nSigmaTPC = 3.0; 
-    const bool applyTOFEventfilter = true; 
+    const bool applyTOFEventfilter = false; 
     const bool applyTOFnSigmaFilter = false; 
     const Float_t nSigmaTOF = 3.0;
-    const bool plotMvsPT = false;
-    const bool plotSysPt = false;
-    const bool plotTrackPt = true; // if both true, the 2D plot will show plotSysPt only
-    const bool do2D = plotMvsPT && (plotSysPt || plotTrackPt);
-    const char* yTitle;
-    if (plotSysPt) {
-        yTitle = "p_{T,sys} (GeV/#it{c})";
-    } else if (plotTrackPt) {
-        yTitle = "p_{T,track} (GeV/#it{c})";
-    }
+  
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
-    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e10));
+    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkPx", 1);
     chain.SetBranchStatus("fTrkPy", 1);
@@ -74,21 +64,9 @@ void Calculate_Invariant_Mass() {
         hM[i]->SetLineColor(colors[i]);
         hM[i]->SetLineWidth(2);
     }
-    TH2D* h2Mpt[6];
-    for (int i = 0; i < 6; ++i) {
-        h2Mpt[i] = new TH2D(
-            Form("h2Mpt_%s", names[i]),
-            Form("Mass vs p_{T} %s; M (GeV/#it{c}^{2}); %s", names[i], yTitle),
-            100, 0.0, 5.0,
-            nPtBins, 0.0, ptMax
-        );
-        h2Mpt[i]->SetLineColor(colors[i]);}
-
+    
     for (Long64_t i = 0; i < nEntries; ++i) {
-        
         chain.GetEntry(i);
-        Float_t nsgima_restraint = 3.0;
-
         if(applyTOFEventfilter && (tofExpMom[0] < 0.0 || tofExpMom[1] < 0.0)) continue; 
 
         for (int j = 0; j < 5; ++j) {
@@ -108,22 +86,6 @@ void Calculate_Invariant_Mass() {
             
             if (M2 > 0) {
                 hM[j]->Fill(std::sqrt(M2));}
-            if (do2D && M2 > 0) {
-                Double_t mass = std::sqrt(M2);
-                if (plotSysPt) {
-                    Double_t pxsum = px[0] + px[1];
-                    Double_t pysum = py[0] + py[1];
-                    Double_t pTsys = std::hypot(pxsum, pysum);
-                    h2Mpt[j]->Fill(mass, pTsys);
-                }
-
-                else if (plotTrackPt) {
-                    for (int it = 0; it < 2; ++it) {
-                    Double_t pT_i = std::hypot(px[it], py[it]);
-                    h2Mpt[j]->Fill(mass, pT_i);
-                    }
-                }
-            }
         }
         bool piK = true, Kpi = true;
         if (applyTPCnSigmaFilter) {
@@ -163,27 +125,11 @@ void Calculate_Invariant_Mass() {
 
         if(ivm <= 0) continue;
         hM[5]->Fill(ivm);
-
-
-        if (do2D) {
-            if (plotSysPt) {
-                Double_t pxsum = px[0] + px[1];
-                Double_t pysum = py[0] + py[1];
-                Double_t pTsys = std::hypot(pxsum, pysum);
-                h2Mpt[5]->Fill(ivm, pTsys);
-            }
-            else if (plotTrackPt) {
-                for (int it = 0; it < 2; ++it) {
-                Double_t pT_i = std::hypot(px[it], py[it]);
-                h2Mpt[5]->Fill(ivm, pT_i);
-                }
-            }
-        }
     }
-    //for (int ih = 0; ih < 6; ++ih) {
-    //    Double_t integ = hM[ih]->GetEntries();
-    //    if (integ > 0) hM[ih]->Scale(1.0/integ);
-    //}
+    for (int ih = 0; ih < 6; ++ih) {
+        Double_t integ = hM[ih]->GetEntries();
+        if (integ > 0) hM[ih]->Scale(1.0/integ);
+    }
 
     TCanvas c("c","Invariant Mass Pages", 800, 600);
     c.Print("InvariantMass.pdf[");      
@@ -227,18 +173,6 @@ void Calculate_Invariant_Mass() {
     }
 
     c.Print("InvariantMass.pdf]");    
-
-    if (do2D) {
-        TString pdfName = plotSysPt ? "M_vs_PT_sys.pdf" : "M_vs_PT_track.pdf";
-        TCanvas c2("c2","M vs pT",800,600);
-        c2.Print(pdfName+"[");
-        for (int i = 0; i < 6; ++i) {
-            c2.Clear();
-            c2.SetLogz();
-            h2Mpt[i]->Draw("COLZ");
-            c2.Print(pdfName);  }
-    
-        c2.Print(pdfName+"]");  
-        }   
+ 
 }
 
