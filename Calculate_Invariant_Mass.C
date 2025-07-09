@@ -76,8 +76,8 @@ void Calculate_Invariant_Mass() {
     const bool applyTOFnSigmaFilter = false; 
     const Float_t nSigmaTOF = 3.0;
     const bool plotMvsPT = true;
-    const bool plotSysPt = true;
-    const bool plotTrackPt = false; // if both true, the 2D plot will show plotSysPt only
+    const bool plotSysPt = false;
+    const bool plotTrackPt = true; // if both true, the 2D plot will show plotSysPt only
     const bool do2D = plotMvsPT && (plotSysPt || plotTrackPt);
     const char* yTitle;
     if (plotSysPt) {
@@ -284,15 +284,16 @@ void Calculate_Invariant_Mass() {
     c.Print("InvariantMass.pdf]");    
 
     if (do2D) {
+        TString pdfName = plotSysPt ? "M_vs_PT_sys.pdf" : "M_vs_PT_track.pdf";
         TCanvas c2("c2","M vs pT",800,600);
-        c2.Print("M_vs_PT.pdf[");
+        c2.Print(pdfName+"[");
         for (int i = 0; i < 6; ++i) {
             c2.Clear();
             c2.SetLogz();
             h2Mpt[i]->Draw("COLZ");
-            c2.Print("M_vs_PT.pdf");  }
+            c2.Print(pdfName);  }
     
-        c2.Print("M_vs_PT.pdf]");  
+        c2.Print(pdfName+"]");  
         }   
 }
 
