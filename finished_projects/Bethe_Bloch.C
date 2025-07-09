@@ -1,15 +1,12 @@
-#include <TSystemDirectory.h>
-#include <TSystemFile.h>
-#include <TChain.h>
-#include <TFile.h>
-#include <TKey.h>
-#include <TCanvas.h>
-#include <TH2F.h>
-#include <TGraph.h>
-#include <TLegend.h>
-#include <TMath.h>
-#include <vector>
-#include "AddTrees.h"
+#include <TChain.h>  
+#include <TH2F.h>      
+#include <TGraph.h>    
+#include <TCanvas.h>    
+#include <TLegend.h>   
+#include <TMath.h>      
+#include <TStyle.h>     
+#include <TString.h>   
+#include "AddTrees.h" 
 
 Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
     Double_t beta = bg / TMath::Sqrt(1.0 + bg*bg);
@@ -47,8 +44,8 @@ void Bethe_Bloch() {
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
     chain.SetBranchAddress("fTrkTPCsignal",     signal);
 
-    Int_t nEntries = chain.GetEntries();
-    nEntries = std::min(nEntries, static_cast<Int_t>(1e9));
+    Long64_t nEntries = chain.GetEntries();
+    nEntries = std::min(nEntries, static_cast<Long64_t>(1e4));
     const Int_t nPoints = 500;
     const Double_t pMin = 0.3, pMax = 5.0;
     const Double_t step = (pMax - pMin) / nPoints;

@@ -1,29 +1,10 @@
-#if defined(__CLING__)
-  #pragma cling load("libHist")
-  #pragma cling load("libCore")
-  #pragma cling load("libRIO")
-  #pragma cling load("libTree")
-  #pragma cling load("libTreePlayer")
-  #pragma cling load("libPhysics")
-  #pragma link C++ class std::vector<float>+;
-#endif
-
 #include <TChain.h>
-#include <TFile.h>
-#include <TKey.h>
 #include <TCanvas.h>
 #include <TH2F.h>
 #include <TLegend.h>
-#include <TSystemDirectory.h>
-#include <TSystemFile.h>
-#include <TList.h>
-#include <TIterator.h>
-#include <TString.h>
 #include <TMath.h>
-#include <vector>
-#include <algorithm>
-#include <iostream>
-#include <map>
+#include <TStyle.h>
+#include <TROOT.h>
 #include "AddTrees.h"
 
 Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
@@ -58,10 +39,11 @@ void Sigma_plot() {
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
     Long64_t nTotal = chain.GetEntries();
-    nTotal = std::min(nTotal, static_cast<Long64_t>(1e6));
+    nTotal = std::min(nTotal, static_cast<Long64_t>(1e4));
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
+    chain.SetBranchStatus("fTrkTOFexpMom", 1);
     const char* subs[5] = {"El","Mu","Pi","Ka","Pr"};
     for (int i = 0; i < 5; ++i) {
         chain.SetBranchStatus(Form("fTrkTPCnSigma%s", subs[i]), 1);
@@ -73,8 +55,10 @@ void Sigma_plot() {
     Float_t tpcNS[5][NtrkMax] = {{0}};
     Float_t tofNS[5][NtrkMax] = {{0}};
     Float_t tpcSignal[NtrkMax] = {0};
+    Float_t tofExpMom[NtrkMax] = {0};
     chain.SetBranchAddress("fTrkTPCsignal", tpcSignal);
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
+    chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom);
     for (int i = 0; i < 5; ++i) {
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
         chain.SetBranchAddress(Form("fTrkTOFnSigma%s", subs[i]), tofNS[i]);
@@ -105,10 +89,12 @@ void Sigma_plot() {
     for (Long64_t i = 0; i < nTotal; ++i) {
         chain.GetEntry(i);
         for (int j = 0; j < NtrkMax; ++j) {
-            Float_t p = inner[j]; if (p<=0) continue;
+            auto p = inner[j]; if (p<=0) continue;
             for (int pi = 0; pi < 5; ++pi) {
                 histTPC[subs[pi]]->Fill(p, tpcNS[pi][j]);
-                histTOF[subs[pi]]->Fill(p, tofNS[pi][j]);
+                if (tofExpMom[j] > 0){
+                    histTOF[subs[pi]]->Fill(p, tofNS[pi][j]);
+                }
             }
         }
     }
@@ -124,6 +110,7 @@ void Sigma_plot() {
         TH2F* hTPC = histTPC[species];
         hTPC->SetTitle(Form("TPC - %s", species.Data()));
         hTPC->Draw("COLZ");
+
         int refIdx = -1;
         for (int i = 0; i < 5; ++i) {
             if (species == subs[i]) {
@@ -132,9 +119,10 @@ void Sigma_plot() {
             }
         }
         if (refIdx < 0) continue;
-        TLegend leg(0, 0.10, 0.15, 0.30, nullptr, "NDC");
-        leg.SetBorderSize(0);
-        leg.SetFillStyle(0);
+
+        TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30, nullptr, "NDC");
+        leg->SetBorderSize(0);
+        leg->SetFillStyle(0);
 
         for(int ih = 0; ih < 5; ++ih) {
             std::vector<double> xv, yv;
@@ -143,24 +131,22 @@ void Sigma_plot() {
 
             for(int j = 0; j < npoints; ++j) {
                 double pG = pgrid[j];
-                double pMeV = pG * 1000.0;
-                double dRef = get_expected_signal(pMeV, masses[refIdx]*1000.0, 1.0);
-                double dHyp = get_expected_signal(pMeV, masses[ih]*1000.0, 1.0);
+                if (pG < 0.1) continue;
+                double dRef = get_expected_signal(pG * 1000, masses[refIdx]*1000.0, 1.0);
+                double dHyp = get_expected_signal(pG * 1000, masses[ih]*1000.0, 1.0);
                 if (dRef < 0 || dHyp < 0) continue;
 
-                double nSigma = (dHyp/dRef - 1.0) / resoTPC[ih];
-
                 xv.push_back(pG);
-                yv.push_back(nSigma);
+                yv.push_back((dHyp/dRef - 1.0) / resoTPC[ih]);
 
             }
-            TGraph* g = new TGraph(xv.size(), xv.data(), yv.data());
+            auto g = new TGraph(xv.size(), xv.data(), yv.data());
             g->SetLineColor(colors[ih]);
             g->SetLineWidth(2);
             g->Draw("L SAME");
-            leg.AddEntry(g, subs[ih], "l");
+            leg->AddEntry(g, subs[ih], "l");
         }
-        leg.Draw();
+        leg->Draw();
         c.Print(pdf);
     }
 
@@ -172,37 +158,43 @@ void Sigma_plot() {
         hTOF->Draw("COLZ");
         
         int idxRef = -1;
-        for (int i = 0; i < 5; ++i) if (species.EqualTo(subs[i])) idxRef = i;
-        if (idxRef<0) continue;
-
-
-        TGraph* graphs[5];
-        for (int ih = 0; ih < 5; ++ih) {
-            Double_t y[npoints];
-            for (int j=0; j<npoints; ++j) {
-                Double_t p = pgrid[j];
-                Double_t bref = p/TMath::Sqrt(masses[idxRef]*masses[idxRef]+p*p);
-                Double_t bhyp = p/TMath::Sqrt(masses[ih]*masses[ih]+p*p);
-                y[j] = (bref-bhyp)/(bhyp*bhyp*resoTOF[ih]);
+        for (int k = 0; k < 5; ++k) {
+            if (species.EqualTo(subs[k])) {
+                idxRef = k;
+                break;
             }
-            graphs[ih] = new TGraph(npoints,pgrid,y);
-            graphs[ih]->SetLineColor(colors[ih]);
-            graphs[ih]->SetLineWidth(2);
-            graphs[ih]->Draw("L SAME");
         }
-        c.Update();
+        if (idxRef < 0) continue;
+
         TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30, nullptr, "NDC");
         leg->SetBorderSize(0);
         leg->SetFillStyle(0);
         leg->SetTextSize(0.03);
+
         for (int ih = 0; ih < 5; ++ih) {
-            leg->AddEntry(graphs[ih], subs[ih], "l");
+            std::vector<Double_t> xv, yv;
+            xv.reserve(npoints);
+            yv.reserve(npoints);
+
+            for (int j = 0; j < npoints; ++j) {
+                Double_t pG = pgrid[j];
+                if (pG < 0.1) continue; 
+
+                Double_t bref = pG / TMath::Sqrt(masses[idxRef]*masses[idxRef] + pG*pG);
+                Double_t bhyp = pG / TMath::Sqrt(masses[ih]*masses[ih] + pG*pG);
+                xv.push_back(pG);
+                yv.push_back((bref - bhyp) / (bhyp*bhyp * resoTOF[ih]));
+            }
+
+            auto g = new TGraph(xv.size(), xv.data(), yv.data());
+            g->SetLineColor(colors[ih]);
+            g->SetLineWidth(2);
+            g->Draw("L SAME");
+            leg->AddEntry(g, subs[ih], "l");
         }
         leg->Draw();
-
+        c.Update();
         c.Print(pdf);
-        for (int ih=0; ih<5; ++ih) {
-            delete graphs[ih];}
     }
 
     c.Print(Form("%s]",pdf));
