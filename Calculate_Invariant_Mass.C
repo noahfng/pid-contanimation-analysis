@@ -1,29 +1,14 @@
-#if defined(__CLING__)
-  #pragma cling load("libHist")
-  #pragma cling load("libCore")
-  #pragma cling load("libRIO")
-  #pragma cling load("libTree")
-  #pragma cling load("libTreePlayer")
-  #pragma cling load("libPhysics")
-  #pragma link C++ class std::vector<float>+;
-#endif
-
-#include <TChain.h>
-#include <TFile.h>
-#include <TKey.h>
-#include <TCanvas.h>
-#include <TH1F.h>
-#include <TLegend.h>
-#include <TSystemDirectory.h>
-#include <TSystemFile.h>
-#include <TList.h>
-#include <TIterator.h>
-#include <TString.h>
-#include <TMath.h>
-#include <TLorentzVector.h>
-#include <vector>
-#include <algorithm>
-#include <iostream>
+#include <TChain.h>          
+#include <TCanvas.h>        
+#include <TH1.h>           
+#include <TH2.h>             
+#include <TLegend.h>        
+#include <TLine.h>         
+#include <TMath.h>            
+#include <TStyle.h>          
+#include <TString.h>           
+#include <TLorentzVector.h>    
+#include <algorithm>        
 #include "finished_projects/AddTrees.h"
 
 void Calculate_Invariant_Mass() {
@@ -33,7 +18,7 @@ void Calculate_Invariant_Mass() {
     const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     const bool applyTPCnSigmaFilter = true;
     const Float_t nSigmaTPC = 3.0; 
-    const bool applyTOFEventfilter = false; 
+    const bool applyTOFEventfilter = true; 
     const bool applyTOFnSigmaFilter = false; 
     const Float_t nSigmaTOF = 3.0;
     const bool plotMvsPT = false;
@@ -48,7 +33,7 @@ void Calculate_Invariant_Mass() {
     }
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
-    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e9));
+    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e10));
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkPx", 1);
     chain.SetBranchStatus("fTrkPy", 1);
@@ -81,17 +66,17 @@ void Calculate_Invariant_Mass() {
 
     const Int_t   nPtBins = 100;
     const Float_t ptMax   = 5.0;
-    TH1F* hM[6];
+    TH1D* hM[6];
     for (int i = 0; i < 6; ++i) {
-        hM[i] = new TH1F(Form("hM_%s", names[i]),
+        hM[i] = new TH1D(Form("hM_%s", names[i]),
                          Form("Invariant mass %s;M (GeV/#it{c}^{2});Entries", names[i]),
                          nPtBins, 0.0, ptMax);
         hM[i]->SetLineColor(colors[i]);
         hM[i]->SetLineWidth(2);
     }
-    TH2F* h2Mpt[6];
+    TH2D* h2Mpt[6];
     for (int i = 0; i < 6; ++i) {
-        h2Mpt[i] = new TH2F(
+        h2Mpt[i] = new TH2D(
             Form("h2Mpt_%s", names[i]),
             Form("Mass vs p_{T} %s; M (GeV/#it{c}^{2}); %s", names[i], yTitle),
             100, 0.0, 5.0,
@@ -149,7 +134,7 @@ void Calculate_Invariant_Mass() {
                 piK &= (TMath::Abs(tofNS[2][0]) < nSigmaTOF && TMath::Abs(tofNS[3][1]) < nSigmaTOF);
                 Kpi &= (TMath::Abs(tofNS[3][0]) < nSigmaTOF && TMath::Abs(tofNS[2][1]) < nSigmaTOF);}
         
-        if (piK == Kpi) continue;
+        if ((applyTPCnSigmaFilter || applyTOFnSigmaFilter) && (piK == Kpi)) continue;
 
         int i1 = 2; // π
         int i2 = 3; // K
@@ -195,10 +180,10 @@ void Calculate_Invariant_Mass() {
             }
         }
     }
-    for (int ih = 0; ih < 6; ++ih) {
-    Double_t integ = hM[ih]->GetEntries();
-    if (integ > 0) hM[ih]->Scale(1.0/integ);
-    }
+    //for (int ih = 0; ih < 6; ++ih) {
+    //    Double_t integ = hM[ih]->GetEntries();
+    //    if (integ > 0) hM[ih]->Scale(1.0/integ);
+    //}
 
     TCanvas c("c","Invariant Mass Pages", 800, 600);
     c.Print("InvariantMass.pdf[");      
@@ -207,7 +192,6 @@ void Calculate_Invariant_Mass() {
         c.Clear();
         c.SetLogy();
         hM[i]->Draw("HIST");
-        
         
         Double_t y1 = 0, y2 = hM[i]->GetMaximum()* 1.65;
         const Double_t mRho   = 0.763;  
