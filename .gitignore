@@ -3,3 +3,5 @@
 
 # Ignore all PDFs (if you regenerate them)
 /*.pdf
+
+/Plots_with_complete_data
