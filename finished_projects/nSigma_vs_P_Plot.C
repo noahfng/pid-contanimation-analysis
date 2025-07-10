@@ -1,10 +1,14 @@
+#include <TROOT.h>
 #include <TChain.h>
 #include <TCanvas.h>
 #include <TH2F.h>
 #include <TLegend.h>
 #include <TMath.h>
 #include <TStyle.h>
-#include <TROOT.h>
+#include <TString.h>
+#include <TStopwatch.h>
+#include <vector>
+#include <algorithm>
 #include "AddTrees.h"
 
 Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
@@ -30,6 +34,7 @@ Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
 }
 
 void nSigma_vs_P_Plot() {
+    TStopwatch watch;
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(0);
     gStyle->SetPalette(kRainBow);
@@ -39,7 +44,7 @@ void nSigma_vs_P_Plot() {
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
     Long64_t nTotal = chain.GetEntries();
-    nTotal = std::min(nTotal, static_cast<Long64_t>(1e4));
+    nTotal = std::min(nTotal, static_cast<Long64_t>(1e9));
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
@@ -67,7 +72,7 @@ void nSigma_vs_P_Plot() {
     Double_t masses[5] = {0.00051099895, 0.1056583755,  0.13957039, 0.493677, 0.93827208816};
     Double_t resoTOF[5]   = {0.013, 0.013, 0.013, 0.019, 0.020};
     Double_t resoTPC[5]   = {0.5, 0.075, 0.078, 0.09, 0.095}; 
-    Int_t   colors[5]  = {kRed,kBlue,kMagenta,kOrange+1,kGreen+2};
+    Int_t   colors[5]  = {kRed, kBlue, kMagenta, kOrange+1, kGreen+2};
     const int npoints = 200;
     const Double_t pMin = 0.01, pMax = 5.0;
     Double_t pgrid[npoints];
@@ -75,128 +80,110 @@ void nSigma_vs_P_Plot() {
         pgrid[i] = pMin + i*(pMax - pMin)/(npoints - 1);
     }
 
-    std::map<TString, TH2F*> histTPC, histTOF;
+    TH2F* histTPC[5];
+    TH2F* histTOF[5];
     for (int i = 0; i < 5; ++i) {
-        TString s = subs[i];
-        histTPC[s] = new TH2F(Form("tpc_%s", s.Data()),
-                              Form("TPC #sigma vs p (%s);p [GeV/c];n#sigma_{TPC}",s.Data()),
-                              100, pMin, pMax, 100, -10, 10);
-        histTOF[s] = new TH2F(Form("tof_%s", s.Data()),
-                              Form("TOF #sigma vs p (%s);p [GeV/c];n#sigma_{TOF}",s.Data()),
-                              100, pMin, pMax, 100, -10, 10);
+        histTPC[i] = new TH2F(
+          Form("tpc_%s", subs[i]),
+          Form("TPC #sigma vs p (%s);p [GeV/c];n#sigma_{TPC}", subs[i]),
+          100, pMin, pMax, 100, -10, 10
+        );
+        histTOF[i] = new TH2F(
+          Form("tof_%s", subs[i]),
+          Form("TOF #sigma vs p (%s);p [GeV/c];n#sigma_{TOF}", subs[i]),
+          100, pMin, pMax, 100, -10, 10
+        );
     }
 
-    for (Long64_t i = 0; i < nTotal; ++i) {
-        chain.GetEntry(i);
-        for (int j = 0; j < NtrkMax; ++j) {
-            auto p = inner[j]; if (p<=0) continue;
-            for (int pi = 0; pi < 5; ++pi) {
-                histTPC[subs[pi]]->Fill(p, tpcNS[pi][j]);
-                if (tofExpMom[j] > 0){
-                    histTOF[subs[pi]]->Fill(p, tofNS[pi][j]);
-                }
+    for (Long64_t ev = 0; ev < nTotal; ++ev) {
+        chain.GetEntry(ev);
+        for (int tr = 0; tr < NtrkMax; ++tr) {
+            Float_t p = inner[tr];
+            if (p <= 0) continue;
+            for (int sp = 0; sp < 5; ++sp) {
+                histTPC[sp]->Fill(p, tpcNS[sp][tr]);
+                if (tofExpMom[tr] > 0)
+                    histTOF[sp]->Fill(p, tofNS[sp][tr]);
             }
         }
     }
 
-    TCanvas c("c","",800,600);
+    TGraph* tpcCurves[5][5];
+    TGraph* tofCurves[5][5];
+    for (int ref = 0; ref < 5; ++ref) {
+        double mRef = masses[ref];
+
+        for (int hyp = 0; hyp < 5; ++hyp) {
+            double mHyp = masses[hyp];
+
+            std::vector<double> xv_tpc, yv_tpc;
+            std::vector<double> xv_tof, yv_tof;
+            xv_tpc.reserve(npoints);  yv_tpc.reserve(npoints);
+            xv_tof.reserve(npoints);  yv_tof.reserve(npoints);
+
+            for (int ip = 0; ip < npoints; ++ip) {
+            double pg = pgrid[ip];
+            if (pg < 0.1) continue;
+
+            //  dE/dx (TPC) curve
+            double dRef = get_expected_signal(pg*1000, mRef*1000, 1.0);
+            double dHyp = get_expected_signal(pg*1000, mHyp*1000, 1.0);
+            xv_tpc.push_back(pg);
+            yv_tpc.push_back((dHyp/dRef - 1.0) / resoTPC[hyp]);
+
+            //  TOF curve
+            double bRef = pg / TMath::Sqrt(mRef*mRef + pg*pg);
+            double bHyp = pg / TMath::Sqrt(mHyp*mHyp + pg*pg);
+            xv_tof.push_back(pg);
+            yv_tof.push_back((bRef - bHyp) / (bHyp*bHyp * resoTOF[hyp]));
+            }
+
+            tpcCurves[ref][hyp] = new TGraph(xv_tpc.size(), xv_tpc.data(), yv_tpc.data());
+            tpcCurves[ref][hyp]->SetLineColor(colors[hyp]);
+            tpcCurves[ref][hyp]->SetLineWidth(2);
+
+            tofCurves[ref][hyp] = new TGraph(xv_tof.size(), xv_tof.data(), yv_tof.data());
+            tofCurves[ref][hyp]->SetLineColor(colors[hyp]);
+            tofCurves[ref][hyp]->SetLineWidth(2);
+        }
+    }
+    
+
+    TCanvas* c = new TCanvas("c", "", 800, 600);
+    TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
+    leg->SetBorderSize(0);
+    leg->SetFillStyle(0);
     const char* pdf = "nsigma_vs_p_tracks_with_curves.pdf";
-    c.Print(Form("%s[",pdf));
-    c.SetLogz();
+    c->Print(Form("%s[", pdf));
+    c->SetLogz();
 
-    // TPC
     for (int i = 0; i < 5; ++i) {
-        TString species = subs[i];
-        TH2F* hTPC = histTPC[species];
-        hTPC->SetTitle(Form("TPC - %s", species.Data()));
-        hTPC->Draw("COLZ");
-
-        int refIdx = -1;
-        for (int i = 0; i < 5; ++i) {
-            if (species == subs[i]) {
-                refIdx = i; 
-                break;
-            }
+        leg->Clear();
+        for (int hyp = 0; hyp < 5; ++hyp) {
+            leg->AddEntry(tpcCurves[i][hyp], subs[hyp], "l");
         }
-        if (refIdx < 0) continue;
-
-        TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30, nullptr, "NDC");
-        leg->SetBorderSize(0);
-        leg->SetFillStyle(0);
-
-        for(int ih = 0; ih < 5; ++ih) {
-            std::vector<double> xv, yv;
-            xv.reserve(npoints);
-            yv.reserve(npoints);
-
-            for(int j = 0; j < npoints; ++j) {
-                double pG = pgrid[j];
-                if (pG < 0.1) continue;
-                double dRef = get_expected_signal(pG * 1000, masses[refIdx]*1000.0, 1.0);
-                double dHyp = get_expected_signal(pG * 1000, masses[ih]*1000.0, 1.0);
-                if (dRef < 0 || dHyp < 0) continue;
-
-                xv.push_back(pG);
-                yv.push_back((dHyp/dRef - 1.0) / resoTPC[ih]);
-
-            }
-            auto g = new TGraph(xv.size(), xv.data(), yv.data());
-            g->SetLineColor(colors[ih]);
-            g->SetLineWidth(2);
-            g->Draw("L SAME");
-            leg->AddEntry(g, subs[ih], "l");
+        histTPC[i]->SetTitle(Form("TPC #sigma vs p (%s)", subs[i]));
+        histTPC[i]->Draw("COLZ");
+        for (int hyp = 0; hyp < 5; ++hyp) {
+            tpcCurves[i][hyp]->Draw("L SAME");
         }
         leg->Draw();
-        c.Print(pdf);
-    }
+        c->Print(pdf);
 
-    // TOF
-    for (int i = 0; i < 5; ++i) {
-        TString species = subs[i];
-        TH2F* hTOF = histTOF[species];
-        hTOF->SetTitle(Form("TOF - %s", species.Data()));
-        hTOF->Draw("COLZ");
-        
-        int idxRef = -1;
-        for (int k = 0; k < 5; ++k) {
-            if (species.EqualTo(subs[k])) {
-                idxRef = k;
-                break;
-            }
+        leg->Clear();
+        for (int hyp = 0; hyp < 5; ++hyp) {
+            leg->AddEntry(tofCurves[i][hyp], subs[hyp], "l");
         }
-        if (idxRef < 0) continue;
-
-        TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30, nullptr, "NDC");
-        leg->SetBorderSize(0);
-        leg->SetFillStyle(0);
-        leg->SetTextSize(0.03);
-
-        for (int ih = 0; ih < 5; ++ih) {
-            std::vector<Double_t> xv, yv;
-            xv.reserve(npoints);
-            yv.reserve(npoints);
-
-            for (int j = 0; j < npoints; ++j) {
-                Double_t pG = pgrid[j];
-                if (pG < 0.1) continue; 
-
-                Double_t bref = pG / TMath::Sqrt(masses[idxRef]*masses[idxRef] + pG*pG);
-                Double_t bhyp = pG / TMath::Sqrt(masses[ih]*masses[ih] + pG*pG);
-                xv.push_back(pG);
-                yv.push_back((bref - bhyp) / (bhyp*bhyp * resoTOF[ih]));
-            }
-
-            auto g = new TGraph(xv.size(), xv.data(), yv.data());
-            g->SetLineColor(colors[ih]);
-            g->SetLineWidth(2);
-            g->Draw("L SAME");
-            leg->AddEntry(g, subs[ih], "l");
+        histTOF[i]->SetTitle(Form("TOF #sigma vs p (%s)", subs[i]));
+        histTOF[i]->Draw("COLZ");
+        for (int hyp = 0; hyp < 5; ++hyp) {
+            tofCurves[i][hyp]->Draw("L SAME");
         }
         leg->Draw();
-        c.Update();
-        c.Print(pdf);
+        c->Print(pdf);
     }
-
-    c.Print(Form("%s]",pdf));
+    c->Print(Form("%s]", pdf));
+    watch.Stop();
+    watch.Print();
 }
 
