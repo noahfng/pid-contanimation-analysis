@@ -8,7 +8,7 @@
 #include <TString.h>           
 #include <TLorentzVector.h>    
 #include <algorithm>        
-#include <AddTrees.h>z
+#include <AddTrees.h>
 
 void Invariant_Mass_Plot() {
     gROOT->SetBatch(kTRUE); 
@@ -22,7 +22,7 @@ void Invariant_Mass_Plot() {
   
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
-    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e7));
+    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkPx", 1);
     chain.SetBranchStatus("fTrkPy", 1);
