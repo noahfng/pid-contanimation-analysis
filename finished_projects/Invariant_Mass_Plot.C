@@ -22,7 +22,7 @@ void Invariant_Mass_Plot() {
   
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
-    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
+    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e9));
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkPx", 1);
     chain.SetBranchStatus("fTrkPy", 1);
@@ -139,40 +139,43 @@ void Invariant_Mass_Plot() {
     TCanvas* c = new TCanvas("c","Invariant Mass Pages", 800, 600);
     c->Print("InvariantMass.pdf[");      
 
+    const Double_t mRho   = 0.763;  
+    const Double_t mKstar = 0.890;  
+    const Double_t mJpsi  = 3.0969; 
+    
+    TLine* l1= new TLine(mRho, 0, mRho, 1);
+    l1->SetLineColor(kBlue);
+    l1->SetLineStyle(2);
+    l1->SetLineWidth(2);
+    
+    TLine* l2= new TLine(mKstar, 0, mKstar, 1);
+    l2->SetLineColor(kGreen+2);
+    l2->SetLineStyle(2);
+    l2->SetLineWidth(2);
+    
+    TLine* l3 = new TLine(mJpsi, 0, mJpsi, 1);
+    l3->SetLineColor(kRed);
+    l3->SetLineStyle(2);
+    l3->SetLineWidth(2);
+
+    TLegend* leg = new TLegend(0.8, 0.65, 0.88, 0.75);
+    leg->AddEntry(l1, "#rho(770)",  "l");   
+    leg->AddEntry(l2, "K*(892)", "l");
+    leg->AddEntry(l3, "J/#psi",     "l");
+    leg->SetBorderSize(0);
+    leg->SetTextSize(0.03);
+
     for (int i = 0; i < 6; ++i) {
         c->Clear();
         c->SetLogy();
+        double y2 = hM[i]->GetMaximum()*1.65;
+        l1->SetY2(y2);
+        l2->SetY2(y2);
+        l3->SetY2(y2);
         hM[i]->Draw("HIST");
-        
-        Double_t y1 = 0, y2 = hM[i]->GetMaximum()* 1.65;
-        const Double_t mRho   = 0.763;  
-        const Double_t mKstar = 0.890;  
-        const Double_t mJpsi  = 3.0969; 
-      
-        TLine* l1= new TLine(mRho, y1, mRho, y2);
-        l1->SetLineColor(kBlue);
-        l1->SetLineStyle(2);
-        l1->SetLineWidth(2);
         l1->Draw("SAME");
-      
-        TLine* l2= new TLine(mKstar, y1, mKstar, y2);
-        l2->SetLineColor(kGreen+2);
-        l2->SetLineStyle(2);
-        l2->SetLineWidth(2);
         l2->Draw("SAME");
-      
-        TLine* l3 = new TLine(mJpsi, y1, mJpsi, y2);
-        l3->SetLineColor(kRed);
-        l3->SetLineStyle(2);
-        l3->SetLineWidth(2);
         l3->Draw("SAME");
-
-        TLegend* leg = new TLegend(0.8, 0.65, 0.88, 0.75);
-        leg->AddEntry(l1, "#rho(770)",  "l");   
-        leg->AddEntry(l2, "K*(892)", "l");
-        leg->AddEntry(l3, "J/#psi",     "l");
-        leg->SetBorderSize(0);
-        leg->SetTextSize(0.03);
         leg->Draw("SAME");
         c->Print("InvariantMass.pdf");
     }
