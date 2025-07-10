@@ -21,6 +21,7 @@ void Invariant_Mass_Plot() {
     const Float_t nSigmaTPC = 3.0; 
     const bool applyTOFEventfilter = false; 
     const bool applyTOFnSigmaFilter = false; 
+    const bool applyNorm = true;
     const Float_t nSigmaTOF = 3.0;
   
     TChain chain("twotauchain");
@@ -134,9 +135,11 @@ void Invariant_Mass_Plot() {
         if(ivm <= 0) continue;
         hM[5]->Fill(ivm);
     }
-    for (int ih = 0; ih < 6; ++ih) {
-        Double_t integ = hM[ih]->GetEntries();
-        if (integ > 0) hM[ih]->Scale(1.0/integ);
+    if (applyNorm){
+        for (int ih = 0; ih < 6; ++ih) {
+            Double_t integ = hM[ih]->GetEntries();
+            if (integ > 0) hM[ih]->Scale(1.0/integ);
+        }
     }
 
     TCanvas* c = new TCanvas("c","Invariant Mass Pages", 800, 600);
