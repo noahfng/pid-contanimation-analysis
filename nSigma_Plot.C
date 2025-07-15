@@ -13,9 +13,31 @@
 #include "TF1.h"  
 #include "TSpectrum.h"
 #include "TSystem.h"
+#include "RooFit.h"
 
 #include <AddTrees.h>
 
+Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
+    Double_t beta = bg / TMath::Sqrt(1.0 + bg*bg);
+    Double_t aa   = TMath::Power(beta, p4);
+    Double_t bb   = TMath::Log(p3 + TMath::Power(1.0/bg, p5));
+    return (p2 - aa - bb) * p1 / aa;
+}
+
+Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
+    const Double_t mMIP = 50.0;
+    const Double_t params[5] = {0.19310481, 4.26696118, 0.00522579, 2.38124907, 0.98055396};
+    const Double_t chFact = 2.3;
+
+    Double_t bg = p / mass;
+    if (bg < 0.05) return -999.;
+    Double_t bethe = mMIP
+                   * bethe_bloch_aleph(bg,
+                                       params[0], params[1], params[2],
+                                       params[3], params[4])
+                   * TMath::Power(charge, chFact);
+    return bethe >= 0 ? bethe : -999.;
+}
 
 std::vector<double> topBinCenters(TH1 *h, int nWanted)
 {
@@ -53,11 +75,13 @@ void nSigma_Plot(){
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);}
 
     const Int_t nBins = 200;
-    const Double_t pMin = 0.45, pMax = 0.6; 
+    const Double_t pMin = 0.5, pMax = 0.6; 
     const Double_t xMin = -15.0, xMax = 15.0;
     const Int_t nParts = 5;
     const TString names[nParts] = {"e","#mu","#pi","K","p"};
     const Int_t colors[nParts] = {kBlue, kBlueYellow, kGreen+2, kOrange+7, kViolet};
+    const Double_t resoTPC[5]   = {0.085, 0.072, 0.074, 0.09, 0.08}; 
+    const Double_t masses[nParts] = {0.00051099895, 0.1056583755,  0.13957039, 0.493677, 0.93827208816};
 
     TH1F *hRes[nParts];
     for (int h = 0; h < nParts; ++h) {
@@ -93,6 +117,28 @@ void nSigma_Plot(){
         hRes[h]->SetLineColor(kRed);
         hRes[h]->SetMarkerSize(0.75); 
         hRes[h]->Draw("E1");
+
+        const double pMid = 0.5*(pMin + pMax);            
+        double mRef = masses[h]; 
+        for (int hyp = 0; hyp < 5; ++hyp) {
+            double mHyp = masses[hyp];
+            double dRef = get_expected_signal(pMid*1000, mRef*1000, 1.0);
+            double dHyp = get_expected_signal(pMid*1000, mHyp*1000, 1.0);                 
+
+            double nSigmaPeak = (dHyp/dRef - 1.0)/ (resoTPC[hyp]);
+            std::cout << "nSigmaPeak for " << subs[hyp] << " = " << nSigmaPeak << std::endl;
+            double yMax = 1.05 * hRes[h]->GetMaximum();
+            TLine *l = new TLine(nSigmaPeak, 0.0, nSigmaPeak, yMax);
+            l->SetLineColor(colors[hyp]);
+            l->SetLineStyle(1);
+            l->Draw("same");
+
+            TLatex txt;
+            txt.SetTextSize(0.035);
+            txt.SetTextAlign(22);                          
+            txt.SetTextColor(colors[hyp]);
+            txt.DrawLatex(nSigmaPeak, 0.9*yMax, subs[hyp]); 
+        }
 
         const int nTryMax = 5;                         
         TF1  *bestFit = nullptr;
@@ -141,14 +187,14 @@ void nSigma_Plot(){
         bestFit->SetLineWidth(2);
         bestFit->Draw("same");
 
-        for (int i = 0; i < bestN; ++i) {
-            TF1* g = new TF1(Form("g_%d_%d",h,i),"gaus",xMin,xMax);
-            for (int p = 0; p < 3; ++p)
-                g->SetParameter(p, bestFit->GetParameter(3*i+p));
-            g->SetLineStyle(2);
-            g->SetLineColor(colors[i % nParts]);
-            g->Draw("same");
-        }
+        //for (int i = 0; i < bestN; ++i) {
+        //    TF1* g = new TF1(Form("g_%d_%d",h,i),"gaus",xMin,xMax);
+        //    for (int p = 0; p < 3; ++p)
+        //        g->SetParameter(p, bestFit->GetParameter(3*i+p));
+        //    g->SetLineStyle(2);
+        //    g->SetLineColor(colors[i % nParts]);
+        //    g->Draw("same");
+        //}
 
         double chi2 = bestFit->GetChisquare();
         int    ndf  = bestFit->GetNDF();

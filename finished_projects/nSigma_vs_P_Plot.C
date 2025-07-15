@@ -45,7 +45,7 @@ void nSigma_vs_P_Plot() {
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
     Long64_t nTotal = chain.GetEntries();
-    nTotal = TMath::Min(nTotal, static_cast<Long64_t>(1e9));
+    nTotal = TMath::Min(nTotal, static_cast<Long64_t>(1e6));
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
@@ -72,7 +72,7 @@ void nSigma_vs_P_Plot() {
 
     Double_t masses[5] = {0.00051099895, 0.1056583755,  0.13957039, 0.493677, 0.93827208816};
     Double_t resoTOF[5]   = {0.013, 0.013, 0.013, 0.019, 0.020};
-    Double_t resoTPC[5]   = {0.5, 0.075, 0.078, 0.09, 0.095}; 
+    Double_t resoTPC[5]   = {0.085, 0.072, 0.074, 0.09, 0.08}; 
     Int_t   colors[5]  = {kRed, kBlue, kMagenta, kOrange+1, kGreen+2};
     const int npoints = 200;
     const Double_t pMin = 0.01, pMax = 5.0;
