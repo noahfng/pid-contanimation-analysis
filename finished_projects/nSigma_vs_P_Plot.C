@@ -45,7 +45,7 @@ void nSigma_vs_P_Plot() {
     TChain chain("twotauchain");
     AddTrees(chain, baseDir);
     Long64_t nTotal = chain.GetEntries();
-    nTotal = TMath::Min(nTotal, static_cast<Long64_t>(1e6));
+    nTotal = TMath::Min(nTotal, static_cast<Long64_t>(1e9));
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
@@ -62,6 +62,8 @@ void nSigma_vs_P_Plot() {
     Float_t tofNS[5][NtrkMax] = {{0}};
     Float_t tpcSignal[NtrkMax] = {0};
     Float_t tofExpMom[NtrkMax] = {0};
+    Bool_t plotTPC = false;
+    Bool_t plotTOF = true;
     chain.SetBranchAddress("fTrkTPCsignal", tpcSignal);
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
     chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom);
@@ -69,11 +71,11 @@ void nSigma_vs_P_Plot() {
         chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
         chain.SetBranchAddress(Form("fTrkTOFnSigma%s", subs[i]), tofNS[i]);
     }
-
-    Double_t masses[5] = {0.00051099895, 0.1056583755,  0.13957039, 0.493677, 0.93827208816};
-    Double_t resoTOF[5]   = {0.013, 0.013, 0.013, 0.019, 0.020};
-    Double_t resoTPC[5]   = {0.085, 0.072, 0.074, 0.09, 0.08}; 
-    Int_t   colors[5]  = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
+    const Char_t* names[5]   = {"e", "#mu", "#pi", "K", "p"};
+    const Double_t masses[5] = {0.00051099895, 0.1056583755,  0.13957039, 0.493677, 0.93827208816};
+    const Double_t resoTOF[5]   = {0.013, 0.013, 0.013, 0.019, 0.020};
+    const Double_t resoTPC[5]   = {0.085, 0.072, 0.074, 0.09, 0.08}; 
+    const Int_t colors[5]  = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
     const Int_t npoints = 200;
     const Double_t pMin = 0.01, pMax = 5.0;
     Double_t pgrid[npoints];
@@ -86,12 +88,12 @@ void nSigma_vs_P_Plot() {
     for (Int_t i = 0; i < 5; ++i) {
         histTPC[i] = new TH2F(
           Form("tpc_%s", subs[i]),
-          Form("TPC #sigma vs p (%s);p [GeV/c];n#sigma_{TPC}", subs[i]),
+          Form("n#sigma_{%s} vs p (TPC);p [GeV/c];n#sigma_{%s}", names[i], names[i]),
           100, pMin, pMax, 100, -10, 10
         );
         histTOF[i] = new TH2F(
           Form("tof_%s", subs[i]),
-          Form("TOF #sigma vs p (%s);p [GeV/c];n#sigma_{TOF}", subs[i]),
+          Form("n#sigma_{%s} vs p (TOF);p [GeV/c];n#sigma_{%s}", names[i], names[i]),
           100, pMin, pMax, 100, -10, 10
         );
     }
@@ -102,8 +104,8 @@ void nSigma_vs_P_Plot() {
             Float_t p = inner[tr];
             if (p <= 0) continue;
             for (Int_t sp = 0; sp < 5; ++sp) {
-                histTPC[sp]->Fill(p, tpcNS[sp][tr]);
-                if (tofExpMom[tr] > 0)
+                if(plotTPC) histTPC[sp]->Fill(p, tpcNS[sp][tr]);
+                if (plotTOF && tofExpMom[tr] > 0)
                     histTOF[sp]->Fill(p, tofNS[sp][tr]);
             }
         }
@@ -123,27 +125,32 @@ void nSigma_vs_P_Plot() {
             xv_tof.reserve(npoints);  yv_tof.reserve(npoints);
 
             for (Int_t ip = 0; ip < npoints; ++ip) {
-            Double_t pg = pgrid[ip];
-            if (pg < 0.1) continue;
-
-            Double_t dRef = get_expected_signal(pg*1000, mRef*1000, 1.0);
-            Double_t dHyp = get_expected_signal(pg*1000, mHyp*1000, 1.0);
-            xv_tpc.push_back(pg);
-            yv_tpc.push_back((dHyp/dRef - 1.0) / resoTPC[hyp]);
-
-            Double_t bRef = pg / TMath::Sqrt(mRef*mRef + pg*pg);
-            Double_t bHyp = pg / TMath::Sqrt(mHyp*mHyp + pg*pg);
-            xv_tof.push_back(pg);
-            yv_tof.push_back((bRef - bHyp) / (bHyp*bHyp * resoTOF[hyp]));
+                Double_t pg = pgrid[ip];
+                if (pg < 0.1) continue;
+                if (plotTPC){
+                    Double_t dRef = get_expected_signal(pg*1000, mRef*1000, 1.0);
+                    Double_t dHyp = get_expected_signal(pg*1000, mHyp*1000, 1.0);
+                    xv_tpc.push_back(pg);
+                    yv_tpc.push_back((dHyp/dRef - 1.0) / resoTPC[hyp]);
+                }
+                if (plotTOF){
+                    Double_t bRef = pg / TMath::Sqrt(mRef*mRef + pg*pg);
+                    Double_t bHyp = pg / TMath::Sqrt(mHyp*mHyp + pg*pg);
+                    xv_tof.push_back(pg);
+                    yv_tof.push_back((bRef - bHyp) / (bHyp*bHyp * resoTOF[hyp]));
+                }
             }
-
-            tpcCurves[ref][hyp] = new TGraph(xv_tpc.size(), xv_tpc.data(), yv_tpc.data());
-            tpcCurves[ref][hyp]->SetLineColor(colors[hyp]);
-            tpcCurves[ref][hyp]->SetLineWidth(2);
-
-            tofCurves[ref][hyp] = new TGraph(xv_tof.size(), xv_tof.data(), yv_tof.data());
-            tofCurves[ref][hyp]->SetLineColor(colors[hyp]);
-            tofCurves[ref][hyp]->SetLineWidth(2);
+            
+            if (plotTPC) {
+                tpcCurves[ref][hyp] = new TGraph(xv_tpc.size(), xv_tpc.data(), yv_tpc.data());
+                tpcCurves[ref][hyp]->SetLineColor(colors[hyp]);
+                tpcCurves[ref][hyp]->SetLineWidth(2);
+            }
+            if (plotTOF) {
+                tofCurves[ref][hyp] = new TGraph(xv_tof.size(), xv_tof.data(), yv_tof.data());
+                tofCurves[ref][hyp]->SetLineColor(colors[hyp]);
+                tofCurves[ref][hyp]->SetLineWidth(2);
+            }
         }
     }
     
@@ -152,35 +159,32 @@ void nSigma_vs_P_Plot() {
     TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
     leg->SetBorderSize(0);
     leg->SetFillStyle(0);
-    const Char_t* pdf = "nsigma_vs_p_tracks_with_curves.pdf";
-    c->Print(Form("%s[", pdf));
+    const Char_t* pdfTPC = "nsigma_vs_p_tpc.pdf";
+    const Char_t* pdfTOF = "nsigma_vs_p_tof.pdf";
+    if (plotTPC) c->Print(Form("%s[", pdfTPC));
+    if (plotTOF) c->Print(Form("%s[", pdfTOF));
     c->SetLogz();
 
     for (Int_t i = 0; i < 5; ++i) {
-        leg->Clear();
-        for (Int_t hyp = 0; hyp < 5; ++hyp) {
-            leg->AddEntry(tpcCurves[i][hyp], subs[hyp], "l");
+        if (plotTPC) {
+            leg->Clear();
+            for (Int_t hyp = 0; hyp < 5; ++hyp) leg->AddEntry(tpcCurves[i][hyp], subs[hyp], "l");
+            histTPC[i]->Draw("COLZ");
+            for (Int_t hyp = 0; hyp < 5; ++hyp) tpcCurves[i][hyp]->Draw("L SAME");
+            leg->Draw();
+            c->Print(pdfTPC);
         }
-        histTPC[i]->SetTitle(Form("TPC #sigma vs p (%s)", subs[i]));
-        histTPC[i]->Draw("COLZ");
-        for (Int_t hyp = 0; hyp < 5; ++hyp) {
-            tpcCurves[i][hyp]->Draw("L SAME");
+        if (plotTOF) {
+            leg->Clear();
+            for (Int_t hyp = 0; hyp < 5; ++hyp) leg->AddEntry(tofCurves[i][hyp], subs[hyp], "l");
+            histTOF[i]->Draw("COLZ");
+            for (Int_t hyp = 0; hyp < 5; ++hyp) tofCurves[i][hyp]->Draw("L SAME");
+            leg->Draw();
+            c->Print(pdfTOF);
         }
-        leg->Draw();
-        c->Print(pdf);
-
-        leg->Clear();
-        for (Int_t hyp = 0; hyp < 5; ++hyp) {
-            leg->AddEntry(tofCurves[i][hyp], subs[hyp], "l");
-        }
-        histTOF[i]->SetTitle(Form("TOF #sigma vs p (%s)", subs[i]));
-        histTOF[i]->Draw("COLZ");
-        for (Int_t hyp = 0; hyp < 5; ++hyp) {
-            tofCurves[i][hyp]->Draw("L SAME");
-        }
-        leg->Draw();
-        c->Print(pdf);
     }
-    c->Print(Form("%s]", pdf));
+
+    if (plotTPC) c->Print(Form("%s]", pdfTPC));
+    if (plotTOF) c->Print(Form("%s]", pdfTOF));
 }
 
