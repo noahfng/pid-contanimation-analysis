@@ -9,7 +9,7 @@
 
 #include "AddTrees.h"
 
-void Invariant_Mass_vs_Pt() {
+void Invariant_Mass_vs_pt() {
     gROOT->SetBatch(kTRUE);
     gStyle->SetPalette(kRainBow);
     const Char_t* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";

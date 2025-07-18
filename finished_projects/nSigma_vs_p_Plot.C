@@ -9,7 +9,8 @@
 #include "TH2F.h"         
 #include "TLegend.h"      
 #include "TGraph.h"       
-#include "TString.h"     
+#include "TString.h" 
+#include "TFile.h"    
 
 #include <AddTrees.h>
 
@@ -35,7 +36,17 @@ Double_t get_expected_signal(Double_t p, Double_t mass, Double_t charge) {
     return bethe >= 0 ? bethe : -999.;
 }
 
-void nSigma_vs_P_Plot() {
+Float_t getReso(Char_t* hypo, Float_t mom)
+{
+  TFile *file = TFile::Open("UD_LHC23_pass4_SingleGap/nSigmaTPCResolution.root", "READ");
+  auto gname = Form("nSigmaTPCres%s", hypo);
+  TGraph *gr = (TGraph*)file->Get(gname);
+  file->Close();
+  auto reso = gr->Eval(mom);
+  return reso;
+}
+
+void nSigma_vs_p_Plot() {
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(0);
     gStyle->SetPalette(kRainBow);
@@ -62,8 +73,8 @@ void nSigma_vs_P_Plot() {
     Float_t tofNS[5][NtrkMax] = {{0}};
     Float_t tpcSignal[NtrkMax] = {0};
     Float_t tofExpMom[NtrkMax] = {0};
-    Bool_t plotTPC = false;
-    Bool_t plotTOF = true;
+    Bool_t plotTPC = true;
+    Bool_t plotTOF = false;
     chain.SetBranchAddress("fTrkTPCsignal", tpcSignal);
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
     chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom);
@@ -89,7 +100,7 @@ void nSigma_vs_P_Plot() {
         histTPC[i] = new TH2F(
           Form("tpc_%s", subs[i]),
           Form("n#sigma_{%s} vs p (TPC);p [GeV/c];n#sigma_{%s}", names[i], names[i]),
-          100, pMin, pMax, 100, -10, 10
+          100, pMin, pMax, 100, -50, 50
         );
         histTOF[i] = new TH2F(
           Form("tof_%s", subs[i]),
@@ -130,8 +141,11 @@ void nSigma_vs_P_Plot() {
                 if (plotTPC){
                     Double_t dRef = get_expected_signal(pg*1000, mRef*1000, 1.0);
                     Double_t dHyp = get_expected_signal(pg*1000, mHyp*1000, 1.0);
+                    Double_t resoRefAbs = getReso((Char_t*)subs[ref], pg);
+                    Double_t fracRef = resoRefAbs / dRef;
+
                     xv_tpc.push_back(pg);
-                    yv_tpc.push_back((dHyp/dRef - 1.0) / resoTPC[hyp]);
+                    yv_tpc.push_back((dHyp/dRef - 1.0) / fracRef);
                 }
                 if (plotTOF){
                     Double_t bRef = pg / TMath::Sqrt(mRef*mRef + pg*pg);
@@ -154,7 +168,6 @@ void nSigma_vs_P_Plot() {
         }
     }
     
-
     TCanvas* c = new TCanvas("c", "", 800, 600);
     TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
     leg->SetBorderSize(0);
