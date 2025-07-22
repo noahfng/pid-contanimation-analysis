@@ -50,11 +50,10 @@ void nSigma_Plot(){
     const Bool_t TOFfilter = false;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
-    const Bool_t PeakZoom = true;
+    const Bool_t PeakZoom = false;
     const Bool_t manualPredictPeaks = false;
 
-    if (manualPredictPeaks) gROOT->SetBatch(kFALSE);
-    else gROOT->SetBatch(kTRUE);
+    gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
 
     const Char_t *baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
@@ -89,47 +88,57 @@ void nSigma_Plot(){
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
 
     auto drawNSigma = [&](Bool_t isTPCmode) {
+        const Double_t pMin   = isTPCmode ? pStart : std::max(pStart, 0.4);
+        const Int_t    nSteps = Int_t(std::floor((pEnd - pMin) / step + 0.5));
+        std::vector<Double_t> pEdges(nSteps+1);
+        for (int i = 0; i <= nSteps; ++i) {
+            pEdges[i] = pMin + i * step;
+        }
         TString suffix = isTPCmode ? "TPC" : "TOF";
-        Double_t pLoopStart = isTPCmode ? pStart : std::max(pStart, 0.4);
-        for (Int_t ref = 0; ref < nParts; ++ref) {
-            TString pdfName = Form("nSigma%s_%s.pdf",suffix.Data(), names[ref].Data());
-            TCanvas *c = new TCanvas("c","n#sigma("+names[ref]+")", 950, 700);
-            c->SetLeftMargin(0.15); 
-            //c->SetGrid(); 
-            c->SetLogy();
-            c->Print(pdfName+"[");
-            const Int_t nSteps = static_cast<Int_t>(std::floor((pEnd - pLoopStart) / step + 0.5));
-            for (Int_t i = 0; i < nSteps; ++i) {
-                Double_t pMin = pLoopStart + i * step;
-                Double_t pMax = pMin + step;
-                TH1F *h = new TH1F(Form("n#sigma_%s_%g < p < %g (%s)",names[ref].Data(),pMin, pMax, suffix.Data()),
-                    Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts",
-                        names[ref].Data(), pMin, pMax, suffix.Data(), names[ref].Data()),
-                    nBins,xMin,xMax);
-                h->Sumw2(true);
-                h->SetMarkerStyle(kFullCircle); 
-                h->SetMarkerSize(0.75);
-                h->SetMarkerColor(kBlack); 
-                h->SetLineColor(kBlack);
-                TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
-                leg->SetBorderSize(0);
-                leg->SetFillStyle(0);
-                
-                for(Long64_t ev = 0; ev < nEntries; ++ev){
-                    chain.GetEntry(ev);
-                    for(Int_t t = 0; t < 2; ++t){
-                        if (tofExpMom[t] < 0 && (!isTPCmode || TOFfilter)) continue;
-                        Float_t pG=inner[t];
-                        if(pG < pMin || pG >= pMax) continue;
-                        Float_t val = isTPCmode ? tpcNS[ref][t] : tofNS[ref][t];
-                        if (!TMath::IsNaN(val)) h->Fill(val);
-                    }
+        std::vector<std::vector<TH1F*>> hists(nParts, std::vector<TH1F*>(nSteps,nullptr));
+        for (int pid = 0; pid < nParts; ++pid) {
+            for (int i = 0; i < nSteps; ++i) {
+                TString name = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts",
+                        names[pid].Data(), pEdges[i], pEdges[i+1], suffix.Data(), names[pid].Data());
+                hists[pid][i] = new TH1F(name, name, nBins, xMin, xMax);
+                hists[pid][i]->Sumw2(true);
+                hists[pid][i]->SetMarkerStyle(kFullCircle);
+                hists[pid][i]->SetMarkerSize(0.75);
+                hists[pid][i]->SetMarkerColor(kBlack);
+                hists[pid][i]->SetLineColor(kBlack);
+            }
+        }
+        for (Long64_t ev = 0; ev < nEntries; ++ev) {
+            chain.GetEntry(ev);
+            for (int t = 0; t < 2; ++t) {
+                if (tofExpMom[t] < 0 && (!isTPCmode || TOFfilter)) 
+                    continue;
+                Double_t pG = inner[t];
+                int bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG)
+                        - pEdges.begin() - 1;
+                if (bin < 0 || bin >= nSteps) 
+                    continue;
+                for (int pid = 0; pid < nParts; ++pid) {
+                    Float_t val = isTPCmode ? tpcNS[pid][t] : tofNS[pid][t];
+                    if (!TMath::IsNaN(val))
+                        hists[pid][bin]->Fill(val);
                 }
+            }
+        }        
+        for (int ref = 0; ref < nParts; ++ref) {
+            TString pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), names[ref].Data());
+            TCanvas* c = new TCanvas("c","",950,700);
+            c->SetLeftMargin(0.15);
+            c->SetLogy();
+            c->Print(pdfName + "[");
+            for (int i = 0; i < nSteps; ++i) {
+                TH1F* h = hists[ref][i];
 
                 struct Peak {Double_t A, mu, sigma; Int_t id; std::vector<Int_t> merged_ids;Bool_t alwaysSeparate = false;};
                 std::vector<Peak> seeds;
-                Double_t yMax = 1.05 * h->GetMaximum();
-                Double_t pMid = 0.5 * (pMin+pMax);
+                Double_t sliceMin = pEdges[i];
+                Double_t sliceMax = pEdges[i+1];
+                Double_t pMid     = 0.5 * (sliceMin + sliceMax);
 
                 Double_t refMass = masses[ref];
                 Double_t dRef = get_expected_signal(pMid * 1000, masses[ref] * 1000, 1.0);
@@ -154,10 +163,8 @@ void nSigma_Plot(){
                     } else {
                         Double_t resoHypAbs = getReso(kTOF, (Char_t*)subs[hyp], pMid);
                         Double_t resoRefAbs = getReso(kTOF, (Char_t*)subs[ref], pMid);
-                        Double_t fracHyp = resoHypAbs / dHyp;
-                        Double_t fracRef = resoRefAbs / dRef;
-                        sigma0 = (fracHyp / fracRef) * (1.0 / (bHyp * bHyp));
-                        mu     = (dHyp/dRef - 1.0) / fracRef;
+                        sigma0 = (resoHypAbs / resoRefAbs) * (1.0 / (bHyp * bHyp));
+                        mu     = (bRef - bHyp) / (bHyp * bHyp * resoHypAbs);
                     }
                     sigma0 = std::clamp(sigma0, 0.5, 15.0);
                     if (mu < xMin || mu > xMax) continue;
@@ -327,10 +334,12 @@ void nSigma_Plot(){
                         sum->SetParameter(3*i+2, p.sigma);
                     }
                 }
-                
-                h->Fit(sum, "RLQ0S");
-                c->Clear();
+                h->Fit(sum, "RQL0S");
                 h->Draw("E1");
+                Double_t yMax = 1.25 * h->GetMaximum();
+                TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
+                leg->SetBorderSize(0);
+                leg->SetFillStyle(0);
                 sum->SetLineColor(kRed); 
                 sum->SetLineWidth(2); 
                 sum->SetNpx(500); 
@@ -385,7 +394,7 @@ void nSigma_Plot(){
                     }
                     leg->AddEntry(g, label, "l");
                 }
- 
+                
                 TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
                 pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
                 pt->SetFillColorAlpha(0,0); 

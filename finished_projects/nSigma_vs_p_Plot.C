@@ -40,7 +40,7 @@ void nSigma_vs_p_Plot() {
     Float_t tofNS[5][NtrkMax] = {{0}};
     Float_t tpcSignal[NtrkMax] = {0};
     Float_t tofExpMom[NtrkMax] = {0};
-    Bool_t plotTPC = true;
+    Bool_t plotTPC = false;
     Bool_t plotTOF = true;
     const Double_t nEntriesLimit = 1e7;
     
@@ -70,12 +70,12 @@ void nSigma_vs_p_Plot() {
         histTPC[i] = new TH2F(
           Form("tpc_%s", subs[i]),
           Form("n#sigma_{%s} vs p (TPC);p [GeV/c];n#sigma_{%s}", names[i], names[i]),
-          100, pMin, pMax, 100, -50, 50
+          100, pMin, pMax, 100, -20, 20
         );
         histTOF[i] = new TH2F(
           Form("tof_%s", subs[i]),
           Form("n#sigma_{%s} vs p (TOF);p [GeV/c];n#sigma_{%s}", names[i], names[i]),
-          100, pMin, pMax, 100, -10, 10
+          100, pMin, pMax, 100, -20, 20
         );
     }
 
@@ -118,12 +118,12 @@ void nSigma_vs_p_Plot() {
                     yv_tpc.push_back((dHyp/dRef - 1.0) / fracRef);
                 }
                 if (plotTOF){
-                    Double_t dRef = get_expected_signal(pg*1000, mRef*1000, 1.0);
-                    Double_t dHyp = get_expected_signal(pg*1000, mHyp*1000, 1.0);
-                    Double_t resoRefAbs = getReso(kTOF, (Char_t*)subs[ref], pg);
-                    Double_t fracRef = resoRefAbs / dRef;
+                    Double_t bRef = pg / TMath::Sqrt(mRef*mRef + pg*pg);
+                    Double_t bHyp = pg / TMath::Sqrt(mHyp*mHyp + pg*pg);
+                    Double_t resoHypAbs = getReso(kTOF, (Char_t*)subs[hyp], pg);
+                    
                     xv_tof.push_back(pg);
-                    yv_tof.push_back((dHyp/dRef - 1.0)/ fracRef);
+                    yv_tof.push_back((bRef - bHyp) / (bHyp*bHyp * resoHypAbs));
                 }
             }
             
