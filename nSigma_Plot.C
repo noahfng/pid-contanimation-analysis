@@ -40,18 +40,25 @@ std::vector<Double_t> topBinCenters(TH1 *h, Int_t nWanted)
 }
 
 void nSigma_Plot(){
+    ROOT::Math::MinimizerOptions::SetDefaultMinimizer("Minuit2", "Migrad");
+    ROOT::Math::MinimizerOptions::SetDefaultTolerance(1E-6);
+    ROOT::Math::MinimizerOptions::SetDefaultErrorDef(1.0);
+    ROOT::Math::MinimizerOptions::SetDefaultPrecision(1E-8);
+    ROOT::Math::MinimizerOptions::SetDefaultMaxFunctionCalls(10000);
+    ROOT::Math::MinimizerOptions::SetDefaultStrategy(1);
+    ROOT::Math::MinimizerOptions::SetDefaultPrintLevel(0);
 
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -30.0, xMax = 70.0;
-    const Double_t pStart = 0.6, pEnd = 0.8, step = 0.1;
-    const Double_t muWindow = 1.0;
+    const Double_t xMin   = -12.0, xMax = 18.0;
+    const Double_t pStart = 0.35, pEnd = 0.45, step = 0.1;
+    const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 1e6;
+    const Double_t nEntriesLimit = 1e7;
     const Bool_t TOFfilter = false;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const Bool_t PeakZoom = false;
-    const Bool_t manualPredictPeaks = false;
+    const Bool_t manualPredictPeaks = true;
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
@@ -98,9 +105,11 @@ void nSigma_Plot(){
         std::vector<std::vector<TH1F*>> hists(nParts, std::vector<TH1F*>(nSteps,nullptr));
         for (int pid = 0; pid < nParts; ++pid) {
             for (int i = 0; i < nSteps; ++i) {
-                TString name = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts",
+                TString name1 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s)", 
+                        names[pid].Data(), pEdges[i], pEdges[i+1], suffix.Data());
+                TString name2 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts",
                         names[pid].Data(), pEdges[i], pEdges[i+1], suffix.Data(), names[pid].Data());
-                hists[pid][i] = new TH1F(name, name, nBins, xMin, xMax);
+                hists[pid][i] = new TH1F(name1, name2, nBins, xMin, xMax);
                 hists[pid][i]->Sumw2(true);
                 hists[pid][i]->SetMarkerStyle(kFullCircle);
                 hists[pid][i]->SetMarkerSize(0.75);
@@ -127,7 +136,7 @@ void nSigma_Plot(){
         }        
         for (int ref = 0; ref < nParts; ++ref) {
             TString pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), names[ref].Data());
-            TCanvas* c = new TCanvas("c","",950,700);
+            TCanvas* c = new TCanvas("c","", 950, 700);
             c->SetLeftMargin(0.15);
             c->SetLogy();
             c->Print(pdfName + "[");
@@ -166,7 +175,7 @@ void nSigma_Plot(){
                         sigma0 = (resoHypAbs / resoRefAbs) * (1.0 / (bHyp * bHyp));
                         mu     = (bRef - bHyp) / (bHyp * bHyp * resoHypAbs);
                     }
-                    sigma0 = std::clamp(sigma0, 0.5, 15.0);
+                    //sigma0 = std::clamp(sigma0, 0.1, 5.0);
                     if (mu < xMin || mu > xMax) continue;
 
                     Int_t    bin = h->FindBin(mu);        
@@ -240,12 +249,20 @@ void nSigma_Plot(){
                         merged.push_back(s);
                     }
                 }
+                std::cout << ">> Automatic peaks for ref=" << names[ref] << "  p in [" 
+                << sliceMin << "," << sliceMax << "] GeV/c:\n";
+                for (size_t j = 0; j < merged.size(); ++j) {
+                    const auto &pk = merged[j];
+                    std::cout << Form("   peak %zu (ids:", j);
+                    for (auto id : pk.merged_ids) std::cout << " " << names[id];
+                    std::cout << Form(" ) -> μ = %.3f, σ = %.3f\n", pk.mu, pk.sigma);
+                }
+
+                Double_t x_low  = xMin;
+                Double_t x_high = xMax;
                 
                 if (PeakZoom) {
                     const Double_t Nsigma = 8.0;
-                    Double_t x_low  = xMin;
-                    Double_t x_high = xMax;
-
                     if (!merged.empty()) {
                     x_low  = merged[0].mu - Nsigma * merged[0].sigma;
                     x_high = merged[0].mu + Nsigma * merged[0].sigma;
@@ -262,7 +279,7 @@ void nSigma_Plot(){
                 }
 
                 Int_t manualNGauss = 0;
-                std::vector<double> manualMeans;
+                std::vector<double> manualMeans, manualSigmas;
                 if (manualPredictPeaks) {
                     c->cd();
                     c->Clear();
@@ -279,6 +296,10 @@ void nSigma_Plot(){
                         for (int i = 0; i < manualNGauss; ++i) {
                             std::cin >> manualMeans[i];
                         }
+                        manualSigmas.resize(manualNGauss);
+                        std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space‑separated): ";
+                        for (int i = 0; i < manualNGauss; ++i)
+                            std::cin >> manualSigmas[i];
                     } else {
                         std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
                         manualNGauss = 0;
@@ -297,6 +318,9 @@ void nSigma_Plot(){
                 }
                 if (nG < 1) { c->Print(pdfName); delete h; continue; }
                 
+                Double_t fit_lo = x_low;
+                Double_t fit_hi = x_high;
+
                 std::ostringstream form;
                 for (size_t i = 0; i < nG; ++i) {
                     if (i) form << "+"; 
@@ -304,24 +328,35 @@ void nSigma_Plot(){
                 }
                 size_t idxLine = 3 * nG;
                 form << "+pol0(" << idxLine << ")";
-                TF1 *sum = new TF1("sum", form.str().c_str(), xMin, xMax);
+                TF1 *sum = new TF1("sum", form.str().c_str(), fit_lo, fit_hi);
                 sum->SetParLimits(idxLine, 0, 10.0);
                 sum->SetParameter(idxLine, 1.0);
                 for (size_t i = 0; i < nG; ++i) {
                     if (manualPredictPeaks && manualNGauss > 0) {
-                        double mu0 = means[i];
+                        Double_t mu0 = means[i];
+                        Double_t sig0 = manualSigmas[i]; 
+                        Int_t    bin = h->FindBin(mu0);        
+                        Double_t amp = h->GetBinContent(bin);
 
-                        sum->SetParLimits(3*i, 0.0, h->GetMaximum()*2);
-                        sum->SetParameter(3*i, h->GetMaximum()/nG);
+                        sum->SetParLimits(3*i+0, 0.0, std::max(h->GetMaximum()*1.2, 1.05*amp));
+                        sum->SetParameter(3*i+0, amp);
 
+                        // mean
                         sum->SetParLimits(3*i+1, mu0 - muWindow, mu0 + muWindow);
                         sum->SetParameter(3*i+1, mu0);
 
-                        sum->SetParLimits(3*i+2, 0.5, 10.0);
-                        sum->SetParameter(3*i+2, 2.0);
+                        // sigma — make sure to set limits *before* setting the parameter!
+                        sum->SetParLimits(3*i+2, sig0*0.5, sig0*2.0);
+                        sum->SetParameter(3*i+2, sig0);
+
+                        // debug print
+                        Double_t lo, hi;
+                        sum->GetParLimits(3*i+2, lo, hi);
+                        std::cout << Form("  Peak %zu σ‑limits=[%.3f,%.3f], seed=%.3f\n", i, lo, hi, sig0);
                     }
                     else {
                         const auto &p = merged[i];
+                        std::cout << "Guessed mu: " << p.mu << ", Guessed sigma: " << p.sigma << std::endl;
 
                         sum->SetParLimits(3*i, 0.0, std::max(h->GetMaximum()*1.2, p.A*1.05));
                         sum->SetParameter(3*i, p.A);
@@ -330,11 +365,11 @@ void nSigma_Plot(){
                         sum->SetParLimits(3*i+1, p.mu - dMu, p.mu + dMu);
                         sum->SetParameter(3*i+1, p.mu);
 
-                        sum->SetParLimits(3*i+2, 0.5*p.sigma, 3.0*p.sigma);
+                        //sum->SetParLimits(3*i+2, 0.5*p.sigma, 2.0*p.sigma);
                         sum->SetParameter(3*i+2, p.sigma);
                     }
                 }
-                h->Fit(sum, "RQL0S");
+                h->Fit(sum, "RQ0S", "", fit_lo, fit_hi);
                 h->Draw("E1");
                 Double_t yMax = 1.25 * h->GetMaximum();
                 TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
@@ -364,8 +399,12 @@ void nSigma_Plot(){
 
                 for (Int_t i = 0; i < nG; ++i) {
                     if (sum->GetParameter(3*i) <= 0) continue;
-                    TF1 *g = new TF1(Form("g_%d_%d", ref, i), "gaus", xMin, xMax);
+                    TF1 *g = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
                     g->SetParameters(&sum->GetParameters()[3*i]);
+                    Double_t A   = sum->GetParameter(3*i + 0);
+                    Double_t mu  = sum->GetParameter(3*i + 1);
+                    Double_t sig = sum->GetParameter(3*i + 2);
+                    std::cout << Form("A = %.3f, μ = %.3f, σ = %.3f\n", A, mu, sig);
                     if (!manualPredictPeaks) {
                         Int_t col = (merged[i].id >= 0) ? colors[merged[i].id] : kGray+2;
                         g->SetLineColor(col);
@@ -394,7 +433,6 @@ void nSigma_Plot(){
                     }
                     leg->AddEntry(g, label, "l");
                 }
-                
                 TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
                 pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
                 pt->SetFillColorAlpha(0,0); 

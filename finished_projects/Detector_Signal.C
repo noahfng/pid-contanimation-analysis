@@ -15,13 +15,13 @@ void Detector_Signal() {
     gStyle->SetOptStat(1);
 
     const Bool_t plotTPC       = true;
-    const Bool_t plotTOF       = true;
+    const Bool_t plotTOF       = false;
     const Bool_t applyNorm     = false;
     const Double_t pStart = 0.1, pEnd = 1.5, step = 0.1;
     const Int_t    nSteps = Int_t(std::floor((pEnd - pStart) / step + 0.5));
     const Int_t   nBins = 200;
     const Double_t xMin  =   0, xMax = 250;
-    const Double_t nEntriesMax = 1e7;
+    const Double_t nEntriesMax = 1e8;
 
     const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     TChain chain("twotauchain");

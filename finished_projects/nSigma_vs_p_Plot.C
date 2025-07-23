@@ -21,6 +21,11 @@ void nSigma_vs_p_Plot() {
     gStyle->SetOptStat(0);
     gStyle->SetPalette(kRainBow);
 
+    const Double_t yMin   = -30.0, yMax = 70.0;
+    const Bool_t plotTPC = true;
+    const Bool_t plotTOF = true;
+    const Double_t nEntriesLimit = 1e9;
+
     const Char_t* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
 
     TChain chain("twotauchain");
@@ -40,9 +45,6 @@ void nSigma_vs_p_Plot() {
     Float_t tofNS[5][NtrkMax] = {{0}};
     Float_t tpcSignal[NtrkMax] = {0};
     Float_t tofExpMom[NtrkMax] = {0};
-    Bool_t plotTPC = false;
-    Bool_t plotTOF = true;
-    const Double_t nEntriesLimit = 1e7;
     
     chain.SetBranchAddress("fTrkTPCsignal", tpcSignal);
     chain.SetBranchAddress("fTrkTPCinnerParam", inner);
@@ -70,12 +72,12 @@ void nSigma_vs_p_Plot() {
         histTPC[i] = new TH2F(
           Form("tpc_%s", subs[i]),
           Form("n#sigma_{%s} vs p (TPC);p [GeV/c];n#sigma_{%s}", names[i], names[i]),
-          100, pMin, pMax, 100, -20, 20
+          100, pMin, pMax, 100, yMin, yMax
         );
         histTOF[i] = new TH2F(
           Form("tof_%s", subs[i]),
           Form("n#sigma_{%s} vs p (TOF);p [GeV/c];n#sigma_{%s}", names[i], names[i]),
-          100, pMin, pMax, 100, -20, 20
+          100, pMin, pMax, 100, yMin, yMax
         );
     }
 
