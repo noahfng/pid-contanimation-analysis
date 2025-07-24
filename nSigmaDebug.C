@@ -22,9 +22,9 @@
 
 void nSigmaDebug(){
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -30.0, xMax = 70.0;
-    const Double_t pStart = 0.35, pEnd = 0.45, step = 0.1;
-    const Double_t muWindow = 2.0;
+    const Double_t xMin   = -12.0, xMax = 20.0;
+    const Double_t pStart = 0.15, pEnd = 0.25, step = 0.1;
+    const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e7;
     const Bool_t TOFfilter = false;
@@ -58,6 +58,7 @@ void nSigmaDebug(){
     
     const Int_t   nParts  = 5;
     const TString names[nParts]   = {"e", "#mu", "#pi", "K", "p"};
+    const std::array<bool, nParts> doPid = {{false, false, true, false, false}};
     const Int_t   colors[nParts] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
     const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.09, 0.08}; 
     const Double_t resoTOF[nParts]   = {0.013, 0.013, 0.013, 0.019, 0.020};
@@ -75,6 +76,7 @@ void nSigmaDebug(){
         TString suffix = isTPCmode ? "TPC" : "TOF";
         std::vector<std::vector<TH1F*>> hists(nParts, std::vector<TH1F*>(nSteps,nullptr));
         for (int pid = 0; pid < nParts; ++pid) {
+            if (!doPid[pid]) continue; 
             for (int i = 0; i < nSteps; ++i) {
                 TString name1 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s)", 
                         names[pid].Data(), pEdges[i], pEdges[i+1], suffix.Data());
@@ -99,6 +101,7 @@ void nSigmaDebug(){
                 if (bin < 0 || bin >= nSteps) 
                     continue;
                 for (int pid = 0; pid < nParts; ++pid) {
+                    if (!doPid[pid]) continue; 
                     Float_t val = isTPCmode ? tpcNS[pid][t] : tofNS[pid][t];
                     if (!TMath::IsNaN(val))
                         hists[pid][bin]->Fill(val);
@@ -106,7 +109,8 @@ void nSigmaDebug(){
             }
         }        
         for (int ref = 0; ref < nParts; ++ref) {
-            TString pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), names[ref].Data());
+            if (!doPid[ref]) continue;
+            TString pdfName = Form("nSigma%s_%s_%.2f<p<%.2f.pdf", suffix.Data(), names[ref].Data(), pStart, pEnd);
             TCanvas* c = new TCanvas("c","", 950, 700);
             c->SetLeftMargin(0.15);
             c->SetLogy();
@@ -146,7 +150,6 @@ void nSigmaDebug(){
                         sigma0 = (resoHypAbs / resoRefAbs) * (1.0 / (bHyp * bHyp));
                         mu     = (bRef - bHyp) / (bHyp * bHyp * resoHypAbs);
                     }
-                    //sigma0 = std::clamp(sigma0, 0.1, 5.0);
                     if (mu < xMin || mu > xMax) continue;
 
                     Int_t    bin = h->FindBin(mu);        
@@ -291,7 +294,7 @@ void nSigmaDebug(){
                         sum->SetParLimits(3*i+1, mu0 - muWindow, mu0 + muWindow);
                         sum->SetParameter(3*i+1, mu0);
 
-                        sum->SetParLimits(3*i+2, sig0*0.5, sig0*2.0);
+                        sum->SetParLimits(3*i+2, sig0*0.5, sig0*1.5);
                         sum->SetParameter(3*i+2, sig0);
 
                         Double_t lo, hi;
@@ -335,6 +338,8 @@ void nSigmaDebug(){
                     label = Form("Peak %d", i);
                     leg->AddEntry(g, label, "l");
                 }
+                std::cout << "Chi²/NDF = " << sum->GetChisquare()/sum->GetNDF() << std::endl;
+                std::cout << xMin << " < x < " << xMax << std::endl;
                 TPaveText *pt=new TPaveText(0.02,0.90,0.25,0.99,"NDC");
                 pt->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
                 pt->SetFillColorAlpha(0,0); 
