@@ -8,33 +8,42 @@
 #include "TString.h"
 
 #include <AddTrees.h> 
-#include <get_expected_signal.h>
+#include <helpers.h>
 
 void dEdx_vs_p() {
+    auto help = new helper();
     gStyle->SetPalette(kRainBow);
-    const Char_t* base_dir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
-    TChain chain("twotauchain");
-    AddTrees(chain, base_dir);
-
-    chain.SetBranchStatus("*", 0);
-    Float_t inner[2], signal[2], TOFnSigmaKa[2], TOFnSigmaPr[2], expMom[2];
-    chain.SetBranchStatus("fTrkTPCinnerParam", 1);
-    chain.SetBranchStatus("fTrkTPCsignal",     1);
-    chain.SetBranchStatus("fTrkTOFnSigmaKa", 1);
-    chain.SetBranchStatus("fTrkTOFnSigmaPr" , 1);
-    chain.SetBranchStatus("fTrkTOFexpMom", 1);
-    chain.SetBranchAddress("fTrkTPCinnerParam", inner);
-    chain.SetBranchAddress("fTrkTPCsignal",     signal);
-    chain.SetBranchAddress("fTrkTOFnSigmaKa", TOFnSigmaKa);
-    chain.SetBranchAddress("fTrkTOFnSigmaPr", TOFnSigmaPr);
-    chain.SetBranchAddress("fTrkTOFexpMom", expMom);
-
-    const Double_t nEntriesLimit = 1e8;
+        
+    const Double_t nEntriesLimit = 1e7;
     const Int_t nPoints = 500;
     const Bool_t KaExclusion = false;
     const Bool_t PrExclusion = true;
     const Bool_t tofFilter = false;
     const Double_t pMin = 0.3, pMax = 5.0;
+    const Int_t nParts = helper::nParts;
+    const Int_t NtrkMax = help->NtrkMax;
+    TChain chain("twotauchain");
+    AddTrees(chain, help->base_dir);
+
+    chain.SetBranchStatus("*", 0);
+    chain.SetBranchStatus("fTrkTPCinnerParam", 1);
+    chain.SetBranchStatus("fTrkTPCsignal",     1);
+    chain.SetBranchStatus("fTrkTOFnSigmaKa",   1);
+    chain.SetBranchStatus("fTrkTOFnSigmaPr",   1);
+    chain.SetBranchStatus("fTrkTOFexpMom",     1);
+
+    std::vector<Float_t> inner(NtrkMax);
+    std::vector<Float_t> signal(NtrkMax);
+    std::vector<Float_t> TOFnSigmaKa(NtrkMax);
+    std::vector<Float_t> TOFnSigmaPr(NtrkMax);
+    std::vector<Float_t> expMom(NtrkMax);
+
+    chain.SetBranchAddress("fTrkTPCinnerParam", inner.data());
+    chain.SetBranchAddress("fTrkTPCsignal",     signal.data());
+    chain.SetBranchAddress("fTrkTOFnSigmaKa",   TOFnSigmaKa.data());
+    chain.SetBranchAddress("fTrkTOFnSigmaPr",   TOFnSigmaPr.data());
+    chain.SetBranchAddress("fTrkTOFexpMom",     expMom.data());
+
     const Double_t step = (pMax - pMin) / nPoints;
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
     TH2F *hist = new TH2F("dedx_vs_p1",
@@ -44,7 +53,7 @@ void dEdx_vs_p() {
 
     for (Long64_t i = 0; i < nEntries; ++i) {
         chain.GetEntry(i);
-        for (int t = 0; t < 2; ++t) {
+        for (int t = 0; t < NtrkMax; ++t) {
             if (expMom[t] < 0 && tofFilter)
                 continue;
             if (inner[t] <= 0 || signal[t] <= 0)
@@ -58,17 +67,6 @@ void dEdx_vs_p() {
         }
     }
 
-    const Int_t nParts = 5;
-    const TString names[nParts]    = {"e", "#mu", "#pi", "K", "p"};
-    const Double_t masses[nParts]  = {
-        0.51099895,   // e
-        105.6583755,  // μ
-        139.57039,    // π
-        493.677,      // K
-        938.27208816  // p
-    };
-    const Double_t charges[nParts] = {1, 1, 1, 1, 1};
-    const Int_t colors[nParts] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
 
     TCanvas* c = new TCanvas("c","dE/dx vs p (tracks)",800,600); 
     c->SetLogz(); 
@@ -81,20 +79,20 @@ void dEdx_vs_p() {
     leg->SetBorderSize(0); 
     leg->SetFillStyle(0);
 
-    for (Int_t i=0; i<nParts; ++i) {
+    for (Int_t i = 0; i < nParts; ++i) {
         TGraph *g = new TGraph();
-        g->SetLineColor(colors[i]);
+        g->SetLineColor(help->colors[i]);
         g->SetLineWidth(2);
         Int_t idx=0;
-        for (Int_t j=0; j<=nPoints; ++j) {
+        for (Int_t j = 0; j <= nPoints; ++j) {
             Double_t pG = pMin + j*step;
             Double_t pM = pG * 1000.;
-            Double_t d  = get_expected_signal(pM, masses[i], charges[i]);
+            Double_t d  = help->getTPCSignal(pM, help->pMasses[i], help->pCharges[i]);
             if (d<0 || TMath::IsNaN(d)) continue;
             g->SetPoint(idx++, pG, d);
         }
         g->Draw("L SAME");
-        leg->AddEntry(g, names[i], "l");
+        leg->AddEntry(g, help->pNames[i], "l");
     }
     leg->Draw();
 

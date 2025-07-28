@@ -11,15 +11,17 @@
 #include "TSystemFile.h"
 #include "TList.h"
 
-#include "AddTrees.h"
+#include <AddTrees.h>
+#include <helpers.h>
 
 void countTOF() {
+  auto help = new helper();
   TChain chain("twotauchain");
-  const Char_t* base_dir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
-  AddTrees(chain, base_dir);
+  AddTrees(chain, help->base_dir);
+  const Int_t NtrkMax = help->NtrkMax;
 
   Long64_t total = chain.GetEntries();
-  Long64_t nEntries = std::min(total, static_cast<Long64_t>(1e9));
+  Long64_t nEntries = std::min(total, static_cast<Long64_t>(1e7));
   printf("Chain has %lld entries (processing %lld)\n", total, nEntries);
 
   chain.SetBranchStatus("*", 0);
@@ -27,13 +29,13 @@ void countTOF() {
   chain.SetBranchStatus("fTrkTOFexpMom", 1);
   chain.SetBranchStatus("fTrkTPCinnerParam", 1);
 
-  Int_t   runNumber[2];    
-  Float_t TOFexpMom[2];    
-  Float_t innerParam[2];   
+  std::vector<Int_t> runNumber(NtrkMax);
+  std::vector<Float_t> TOFexpMom(NtrkMax);
+  std::vector<Float_t> innerParam(NtrkMax);
 
-  chain.SetBranchAddress("fRunNumber",        runNumber);
-  chain.SetBranchAddress("fTrkTOFexpMom",     TOFexpMom);
-  chain.SetBranchAddress("fTrkTPCinnerParam", innerParam);
+  chain.SetBranchAddress("fRunNumber",        runNumber.data());
+  chain.SetBranchAddress("fTrkTOFexpMom",     TOFexpMom.data());
+  chain.SetBranchAddress("fTrkTPCinnerParam", innerParam.data());
 
   std::map<Int_t, Long64_t> withTOF;
   std::map<Int_t, Long64_t> withoutTOF;
@@ -47,7 +49,7 @@ void countTOF() {
     bool hasP03 = false;
 
     
-    for (int j = 0; j < 2; ++j) {
+    for (int j = 0; j < NtrkMax; ++j) {
       if (TOFexpMom[j] >= 0) {
         hasTOF = true;
         break;
@@ -55,7 +57,7 @@ void countTOF() {
     }
 
     
-    for (int j = 0; j < 2; ++j) {
+    for (int j = 0; j < NtrkMax; ++j) {
       if (innerParam[j] >= 0.3) { 
         hasP03 = true;
         break;

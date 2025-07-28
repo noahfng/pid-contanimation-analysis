@@ -8,9 +8,10 @@
 #include "TStyle.h"
 
 #include <AddTrees.h>
-#include <get_expected_signal.h>
+#include <helpers.h>
 
 void Detector_Signal() {
+    auto help = new helper();
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(1);
 
@@ -22,20 +23,25 @@ void Detector_Signal() {
     const Int_t   nBins = 200;
     const Double_t xMin  =   0, xMax = 250;
     const Double_t nEntriesMax = 1e8;
+    const Int_t nParts = helper::nParts;
+    const Int_t NtrkMax = help->NtrkMax;
 
-    const char* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     TChain chain("twotauchain");
-    AddTrees(chain, baseDir);
+    AddTrees(chain, help->base_dir);
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCsignal", 1);
     chain.SetBranchStatus("fTrkTOFsignal", 1);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
 
-    Float_t TPCsignal[2], TOFsignal[2], inner[2];
-    chain.SetBranchAddress("fTrkTPCsignal", TPCsignal);
-    chain.SetBranchAddress("fTrkTOFsignal", TOFsignal);
-    chain.SetBranchAddress("fTrkTPCinnerParam", inner);
+    std::vector<Float_t> inner(NtrkMax);
+    std::vector<Float_t> TPCsignal(NtrkMax);
+    std::vector<Float_t> TOFsignal(NtrkMax);
+
+    chain.SetBranchAddress("fTrkTPCinnerParam", inner.data());
+    chain.SetBranchAddress("fTrkTPCsignal", TPCsignal.data());
+    chain.SetBranchAddress("fTrkTOFsignal", TOFsignal.data());
+
 
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesMax));
 
@@ -73,7 +79,7 @@ void Detector_Signal() {
 
     for (Long64_t i = 0; i < nEntries; ++i) {
         chain.GetEntry(i);
-        for (int trk = 0; trk < 2; ++trk) {
+        for (int trk = 0; trk < NtrkMax; ++trk) {
             Double_t p = inner[trk];
             Int_t    ibin = Int_t((p - pStart)/step);
             if (ibin < 0 || ibin >= nSteps) continue;  

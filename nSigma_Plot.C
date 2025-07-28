@@ -16,54 +16,53 @@
 #include "TSystem.h"
 
 #include <AddTrees.h>
-#include <get_expected_signal.h>
-#include <getReso.h>
+#include <helpers.h>
 
 
 void nSigma_Plot(){
+    auto help = new helper();
+    const Int_t nParts = helper::nParts;
+    const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -12.0, xMax = 18.0;
-    const Double_t pStart = 0.35, pEnd = 0.45, step = 0.1;
-    const Double_t muWindow = 2.0;
+    const Double_t xMin   = -30.0, xMax = 70.0;
+    const Double_t pStart = 0.30, pEnd = 0.7, step = 0.1;
+    const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e7;
     const Bool_t TOFfilter = false;
-    const Bool_t plotTPC = true;
-    const Bool_t plotTOF = false;
+    const Bool_t KaExclusion = false;
+    const Bool_t PrExclusion = true;
+    const Bool_t plotTPC = false;
+    const Bool_t plotTOF = true;
     const Bool_t PeakZoom = false;
     const Bool_t manualPredictPeaks = false;
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
 
-    const Char_t *baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     TChain chain("twotauchain");
-    AddTrees(chain, baseDir);
+    AddTrees(chain, help->base_dir);
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
     chain.SetBranchStatus("fTrkTOFexpMom", 1);
 
-    const Char_t *subs[5] = {"El", "Mu", "Pi", "Ka", "Pr"};
-    for (Int_t i = 0; i < 5; ++i){
-        chain.SetBranchStatus(Form("fTrkTPCnSigma%s", subs[i]), 1);
-        chain.SetBranchStatus(Form("fTrkTOFnSigma%s", subs[i]), 1);
+    for (Int_t i = 0; i < nParts; ++i){
+        chain.SetBranchStatus(Form("fTrkTPCnSigma%s", help->pNames[i]), 1);
+        chain.SetBranchStatus(Form("fTrkTOFnSigma%s", help->pNames[i]), 1);
     }
-    Float_t inner[2], tofExpMom[2];
-    Float_t tpcNS[5][2], tofNS[5][2];
-    chain.SetBranchAddress("fTrkTPCinnerParam", inner);
-    chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom);
-    for (Int_t i = 0; i < 5; ++i){
-        chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
-        chain.SetBranchAddress(Form("fTrkTOFnSigma%s", subs[i]), tofNS[i]);
+    std::vector<Float_t> inner(NtrkMax);
+    std::vector<Float_t> tofExpMom(NtrkMax);
+    std::vector<std::vector<Float_t>> tpcNS(nParts, std::vector<Float_t>(NtrkMax));
+    std::vector<std::vector<Float_t>> tofNS(nParts, std::vector<Float_t>(NtrkMax));
+
+    chain.SetBranchAddress("fTrkTPCinnerParam", inner.data());
+    chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom.data());
+
+    for (Int_t i = 0; i < nParts; ++i) {
+        chain.SetBranchAddress(Form("fTrkTPCnSigma%s", help->pNames[i]), tpcNS[i].data());
+        chain.SetBranchAddress(Form("fTrkTOFnSigma%s", help->pNames[i]), tofNS[i].data());
     }
-    
-    const Int_t   nParts  = 5;
-    const TString names[nParts]   = {"e", "#mu", "#pi", "K", "p"};
-    const Int_t   colors[nParts] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
-    const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.09, 0.08}; 
-    const Double_t resoTOF[nParts]   = {0.013, 0.013, 0.013, 0.019, 0.020};
-    const Double_t masses[nParts]  = {0.00051099895, 0.1056583755, 0.13957039, 0.493677, 0.93827208816};
 
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
 
@@ -79,9 +78,9 @@ void nSigma_Plot(){
         for (int pid = 0; pid < nParts; ++pid) {
             for (int i = 0; i < nSteps; ++i) {
                 TString name1 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s)", 
-                        names[pid].Data(), pEdges[i], pEdges[i+1], suffix.Data());
+                        help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data());
                 TString name2 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts",
-                        names[pid].Data(), pEdges[i], pEdges[i+1], suffix.Data(), names[pid].Data());
+                        help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), help->pCodes[pid]);
                 hists[pid][i] = new TH1F(name1, name2, nBins, xMin, xMax);
                 hists[pid][i]->Sumw2(true);
                 hists[pid][i]->SetMarkerStyle(kFullCircle);
@@ -92,8 +91,12 @@ void nSigma_Plot(){
         }
         for (Long64_t ev = 0; ev < nEntries; ++ev) {
             chain.GetEntry(ev);
-            for (int t = 0; t < 2; ++t) {
+            for (int t = 0; t < help->NtrkMax; ++t) {
                 if (tofExpMom[t] < 0 && (!isTPCmode || TOFfilter)) 
+                    continue;
+                if (KaExclusion && !TMath::IsNaN(tofNS[3][t]) && TMath::Abs(tofNS[3][t]) < 3.0) 
+                    continue;
+                if (PrExclusion && !TMath::IsNaN(tofNS[4][t]) && TMath::Abs(tofNS[4][t]) < 3.0) 
                     continue;
                 Double_t pG = inner[t];
                 int bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG)
@@ -108,7 +111,7 @@ void nSigma_Plot(){
             }
         }        
         for (int ref = 0; ref < nParts; ++ref) {
-            TString pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), names[ref].Data());
+            TString pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), help->pCodes[ref]);
             TCanvas* c = new TCanvas("c","", 950, 700);
             c->SetLeftMargin(0.15);
             c->SetLogy();
@@ -122,33 +125,29 @@ void nSigma_Plot(){
                 Double_t sliceMax = pEdges[i+1];
                 Double_t pMid     = 0.5 * (sliceMin + sliceMax);
 
-                Double_t refMass = masses[ref];
-                Double_t dRef = get_expected_signal(pMid * 1000, masses[ref] * 1000, 1.0);
-                Double_t bRef = pMid / TMath::Sqrt(pMid * pMid + refMass * refMass);
+                Double_t refMass = help->pMasses[ref];
+                Double_t dRef = help->getTPCSignal(pMid * 1000, help->pMasses[ref], 1.0);
+                Double_t bRef = help->beta(refMass, pMid);
 
                 for(Int_t hyp=0; hyp < nParts; ++hyp){
-                    Double_t hypMass = masses[hyp];
-                    Double_t dHyp = get_expected_signal(pMid * 1000, hypMass * 1000, 1.0);
+                    Double_t hypMass = help->pMasses[hyp];
+                    Double_t dHyp = help->getTPCSignal(pMid * 1000, hypMass, 1.0);
                     Double_t bHyp = pMid / TMath::Sqrt(pMid * pMid + hypMass * hypMass);
                     if(dRef < 0 || dHyp < 0) continue;
 
                     Double_t sigma0, mu;
                     if (isTPCmode) {
-                        Double_t resoHypAbs = getReso(kTPC, (Char_t*)subs[hyp], pMid); 
-                        Double_t resoRefAbs = getReso(kTPC, (Char_t*)subs[ref],  pMid); 
+                        Double_t resoHyp = help->resoTPC[hyp];
+                        Double_t resoRef = help->resoTPC[ref];
 
-                        Double_t fracHyp = resoHypAbs / dHyp;
-                        Double_t fracRef = resoRefAbs / dRef;
-
-                        sigma0 = (fracHyp / fracRef) * (dHyp / dRef);
-                        mu     = (dHyp/dRef - 1.0) / fracRef;
+                        sigma0 = (resoHyp / resoRef) * (dHyp / dRef);
+                        mu     = (dHyp/dRef - 1.0) / resoRef;
                     } else {
-                        Double_t resoHypAbs = getReso(kTOF, (Char_t*)subs[hyp], pMid);
-                        Double_t resoRefAbs = getReso(kTOF, (Char_t*)subs[ref], pMid);
-                        sigma0 = (resoHypAbs / resoRefAbs) * (1.0 / (bHyp * bHyp));
-                        mu     = (bRef - bHyp) / (bHyp * bHyp * resoHypAbs);
+                        Double_t resoHyp = help->resoTOF[hyp];
+                        Double_t resoRef = help->resoTOF[ref];
+                        sigma0 = (resoHyp / resoRef) * (1.0 / (bHyp * bHyp));
+                        mu     = (bRef - bHyp) / (bHyp * bHyp * resoRef);
                     }
-                    //sigma0 = std::clamp(sigma0, 0.1, 5.0);
                     if (mu < xMin || mu > xMax) continue;
 
                     Int_t    bin = h->FindBin(mu);        
@@ -221,14 +220,6 @@ void nSigma_Plot(){
                     else {
                         merged.push_back(s);
                     }
-                }
-                std::cout << ">> Automatic peaks for ref=" << names[ref] << "  p in [" 
-                << sliceMin << "," << sliceMax << "] GeV/c:\n";
-                for (size_t j = 0; j < merged.size(); ++j) {
-                    const auto &pk = merged[j];
-                    std::cout << Form("   peak %zu (ids:", j);
-                    for (auto id : pk.merged_ids) std::cout << " " << names[id];
-                    std::cout << Form(" ) -> μ = %.3f, σ = %.3f\n", pk.mu, pk.sigma);
                 }
 
                 Double_t x_low  = xMin;
@@ -322,11 +313,9 @@ void nSigma_Plot(){
 
                         Double_t lo, hi;
                         sum->GetParLimits(3*i+2, lo, hi);
-                        std::cout << Form("  Peak %zu σ‑limits=[%.3f,%.3f], seed=%.3f\n", i, lo, hi, sig0);
                     }
                     else {
                         const auto &p = merged[i];
-                        std::cout << "Guessed mu: " << p.mu << ", Guessed sigma: " << p.sigma << std::endl;
 
                         sum->SetParLimits(3*i, 0.0, std::max(h->GetMaximum()*1.2, p.A*1.05));
                         sum->SetParameter(3*i, p.A);
@@ -353,7 +342,7 @@ void nSigma_Plot(){
                     for (const auto &pk : merged) {
                         Double_t mu = pk.mu;
                         TLine *l = new TLine(mu, 0, mu, yMax);
-                        Int_t col  = (pk.id >= 0) ? colors[pk.id] : kGray+2;
+                        Int_t col  = (pk.id >= 0) ? help->colors[pk.id] : kGray+2;
                         l->SetLineColor(col);
                         l->Draw();
                     }
@@ -362,7 +351,7 @@ void nSigma_Plot(){
                     for (Int_t i = 0; i < nG; ++i) {
                         Double_t mu = means[i];
                         TLine *l = new TLine(mu, 0, mu, yMax);
-                        l->SetLineColor(colors[i % nParts]);
+                        l->SetLineColor(help->colors[i % nParts]);
                         l->Draw();
                     }
                 }
@@ -370,16 +359,11 @@ void nSigma_Plot(){
                 for (Int_t i = 0; i < nG; ++i) {
                     if (sum->GetParameter(3*i) <= 0) continue;
                     TF1 *g = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
-                    g->SetParameters(&sum->GetParameters()[3*i]);
-                    Double_t A   = sum->GetParameter(3*i + 0);
-                    Double_t mu  = sum->GetParameter(3*i + 1);
-                    Double_t sig = sum->GetParameter(3*i + 2);
-                    std::cout << Form("A = %.3f, μ = %.3f, σ = %.3f\n", A, mu, sig);
                     if (!manualPredictPeaks) {
-                        Int_t col = (merged[i].id >= 0) ? colors[merged[i].id] : kGray+2;
+                        Int_t col = (merged[i].id >= 0) ? help->colors[merged[i].id] : kGray+2;
                         g->SetLineColor(col);
                     } else {
-                        g->SetLineColor(colors[i % nParts]);   
+                        g->SetLineColor(help->colors[i % nParts]);   
                     }
                     g->SetLineStyle(2);
                     g->SetNpx(500);
@@ -391,11 +375,11 @@ void nSigma_Plot(){
                         std::sort(ids.begin(), ids.end());
                         ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
                         if (ids.size()==1) {
-                            label = names[ids[0]];
+                            label = help->pCodes[ids[0]];
                         } else {
                             for (size_t j=0; j<ids.size(); ++j) {
                                 if (j) label += " + ";
-                                label += names[ids[j]];
+                                label += help->pCodes[ids[j]];
                             }
                         }
                     } else {

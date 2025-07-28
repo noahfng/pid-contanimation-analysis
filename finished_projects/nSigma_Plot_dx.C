@@ -8,35 +8,33 @@
 #include "TH1F.h"
 #include "TString.h"
 
-#include "AddTrees.h"
+#include <AddTrees.h>
+#include <helpers.h>
 
 void nSigma_Plot_dx() {
-    gROOT->SetBatch(kTRUE);
-    gStyle->SetOptStat(0);
-    const Char_t* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
-    TChain chain("twotauchain");
-    AddTrees(chain, baseDir);
-
-    chain.SetBranchStatus("*", 0);
-    chain.SetBranchStatus("fTrkTPCinnerParam", 1);
-    const Char_t* subs[5] = {"El","Mu","Pi","Ka","Pr"};
-    for (Int_t i = 0; i < 5; ++i) {
-        chain.SetBranchStatus(Form("fTrkTPCnSigma%s", subs[i]), 1);
-    }
-
-    Float_t inner[2];
-    Float_t tpcNS[5][2];
-    chain.SetBranchAddress("fTrkTPCinnerParam", inner);
-    for (Int_t i = 0; i < 5; ++i) {
-        chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
-    }
-
+    auto help = new helper();
+    const Int_t nParts = helper::nParts;
+    const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins  = 200;
     const Double_t pMin  = 0.55, pMax = 0.70;
     const Double_t xMin  = -15.0, xMax = 15.0;
-    const Int_t   nParts = 5;
-    const TString names[nParts]  = {"e","#mu","#pi","K","p"};
-    const Int_t   colors[nParts] = {kBlue, kRed, kGreen+2, kOrange+7, kViolet};
+    const Double_t nEntriesLimit = 1e7;
+    gROOT->SetBatch(kTRUE);
+    gStyle->SetOptStat(0);
+    TChain chain("twotauchain");
+    AddTrees(chain, help->base_dir);
+
+    chain.SetBranchStatus("*", 0);
+    chain.SetBranchStatus("fTrkTPCinnerParam", 1);
+    for (Int_t i = 0; i < nParts; ++i) {
+        chain.SetBranchStatus(Form("fTrkTPCnSigma%s", help->pNames[i]), 1);
+    }
+    std::vector<Float_t> inner(NtrkMax);
+    std::vector<std::vector<Float_t>> tpcNS(nParts, std::vector<Float_t>(NtrkMax));
+    chain.SetBranchAddress("fTrkTPCinnerParam", inner.data());
+    for (Int_t i = 0; i < nParts; ++i) {
+        chain.SetBranchAddress(Form("fTrkTPCnSigma%s", help->pNames[i]), tpcNS[i].data());
+    }
 
 
     TH1F* hRes[nParts];
@@ -44,27 +42,27 @@ void nSigma_Plot_dx() {
     for (Int_t h = 0; h < nParts; ++h) {
 
         hRes[h] = new TH1F(
-            Form("res_%s", names[h].Data()),
+            Form("res_%s", help->pCodes[h]),
             Form("n#sigma_{%s} for %.2f<p<%.2f; n#sigma; Counts",
-                 names[h].Data(), pMin, pMax),
+                 help->pCodes[h], pMin, pMax),
             nBins, xMin, xMax
         );
-        hDeriv[h] = (TH1F*)hRes[h]->Clone(Form("deriv_%s", names[h].Data()));
+        hDeriv[h] = (TH1F*)hRes[h]->Clone(Form("deriv_%s", help->pCodes[h]));
         hDeriv[h]->SetTitle(
             Form("d/dx n#sigma_{%s} for %.2f<p<%.2f; n#sigma; dN/dx",
-                 names[h].Data(), pMin, pMax)
+                 help->pCodes[h], pMin, pMax)
         );
-        hDeriv[h]->SetLineColor(colors[h]);
-        hDeriv[h]->SetMarkerColor(colors[h]);
+        hDeriv[h]->SetLineColor(help->colors[h]);
+        hDeriv[h]->SetMarkerColor(help->colors[h]);
         hDeriv[h]->SetMarkerStyle(kFullCircle);
         hDeriv[h]->SetMarkerSize(0.8);
         hDeriv[h]->GetYaxis()->SetRangeUser(-10, 10);
     }
 
-    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(1e6));
+    Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
     for (Long64_t i = 0; i < nEntries; ++i) {
         chain.GetEntry(i);
-        for (Int_t tr = 0; tr < 2; ++tr) {
+        for (Int_t tr = 0; tr < NtrkMax; ++tr) {
             Float_t pG = inner[tr];
             if (pG < pMin || pG > pMax) continue;
             for (Int_t h = 0; h < nParts; ++h) {

@@ -1,20 +1,21 @@
-#include <TROOT.h>       
-#include <TStyle.h>     
-#include <TChain.h>
-#include <TCanvas.h>
-#include <TH2.h>          
-#include <TMath.h>       
-#include <TString.h>     
-#include <TLorentzVector.h> 
+#include "TROOT.h"       
+#include "TStyle.h"     
+#include "TChain.h"
+#include "TCanvas.h"
+#include "TH2.h"          
+#include "TMath.h"       
+#include "TString.h"     
+#include "TLorentzVector.h" 
 
-#include "AddTrees.h"
+#include <AddTrees.h>
+#include <helpers.h>
 
 void Invariant_Mass_vs_pt() {
+    auto help = new helper();
     gROOT->SetBatch(kTRUE);
     gStyle->SetPalette(kRainBow);
-    const Char_t* baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
 
-    const Bool_t    applyTPCnSigmaFilter = true;
+    const Bool_t    applyTPCnSigmaFilter = false;
     const Float_t nSigmaTPC            = 3.0;
     const Bool_t    applyTOFEventfilter  = false;
     const Bool_t    applyTOFnSigmaFilter = false;
@@ -22,6 +23,12 @@ void Invariant_Mass_vs_pt() {
     const Bool_t    plotSysPt            = true;
     const Bool_t    plotTrackPt          = false; // if both true, the 2D plot will show plotSysPt 
     const Double_t nEntriesLimit = 1e6;
+    const Int_t   nMassBins = 100;
+    const Float_t massMax   =   5.0;
+    const Int_t   nPtBins   = 100;
+    const Float_t ptMax     =   5.0;
+    const Int_t nParts = helper::nParts;
+    const Int_t NtrkMax = help->NtrkMax;
 
     TString yTitle = plotSysPt
                      ? "p_{T,sys}"
@@ -31,38 +38,32 @@ void Invariant_Mass_vs_pt() {
                       : "M_vs_PT_track.pdf";
 
     TChain chain("twotauchain");
-    AddTrees(chain, baseDir);
-    Long64_t nEntries = TMath::Min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
+    AddTrees(chain, help->base_dir);
     
-    chain.SetBranchStatus("*",0);
-    chain.SetBranchStatus("fTrkPx",1);
-    chain.SetBranchStatus("fTrkPy",1);
-    chain.SetBranchStatus("fTrkPz",1);
-    chain.SetBranchStatus("fTrkTOFexpMom",1);
-    const Char_t* subs[5]={"El","Mu","Pi","Ka","Pr"};
-    for(Int_t i=0;i<5;++i){
-        chain.SetBranchStatus(Form("fTrkTPCnSigma%s",subs[i]),1);
-        chain.SetBranchStatus(Form("fTrkTOFnSigma%s",subs[i]),1);
-    }
+    chain.SetBranchStatus("*", 0);
+    chain.SetBranchStatus("fTrkPx", 1);
+    chain.SetBranchStatus("fTrkPy", 1);
+    chain.SetBranchStatus("fTrkPz", 1);
+    chain.SetBranchStatus("fTrkTOFexpMom", 1);
+    for (Int_t i = 0; i < nParts; ++i) {
+        chain.SetBranchStatus(Form("fTrkTPCnSigma%s", help->pNames[i]), 1);
+        chain.SetBranchStatus(Form("fTrkTOFnSigma%s", help->pNames[i]), 1);}
 
-    Float_t px[2],py[2],pz[2],tofExp[2];
-    Float_t tpcNS[5][2],tofNS[5][2];
-    chain.SetBranchAddress("fTrkPx",px);
-    chain.SetBranchAddress("fTrkPy",py);
-    chain.SetBranchAddress("fTrkPz",pz);
-    chain.SetBranchAddress("fTrkTOFexpMom",tofExp);
-    for(Int_t i=0;i<5;++i){
-        chain.SetBranchAddress(Form("fTrkTPCnSigma%s",subs[i]),tpcNS[i]);
-        chain.SetBranchAddress(Form("fTrkTOFnSigma%s",subs[i]),tofNS[i]);
-    }
+    std::vector<Float_t> px(NtrkMax);
+    std::vector<Float_t> py(NtrkMax);
+    std::vector<Float_t> pz(NtrkMax);
+    std::vector<Float_t> tofExpMom(NtrkMax);
+    std::vector<std::vector<Float_t>> tpcNS(nParts, std::vector<Float_t>(NtrkMax));
+    std::vector<std::vector<Float_t>> tofNS(nParts, std::vector<Float_t>(NtrkMax));
 
-    Double_t masses[5] = {
-        0.00051099895,   // e
-        0.1056583755,    // μ
-        0.13957039,      // π
-        0.493677,        // K
-        0.93827208816    // p
-    };
+    chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom.data());
+    chain.SetBranchAddress("fTrkPx",px.data());
+    chain.SetBranchAddress("fTrkPy",py.data());
+    chain.SetBranchAddress("fTrkPz",pz.data());
+    for (Int_t i = 0; i < nParts; ++i) {
+        chain.SetBranchAddress(Form("fTrkTPCnSigma%s", help->pNames[i]), tpcNS[i].data());
+        chain.SetBranchAddress(Form("fTrkTOFnSigma%s", help->pNames[i]), tofNS[i].data());}
+
     const Char_t* names[6] = {
     "e^{+}e^{-}",
     "#mu^{+}#mu^{-}",
@@ -71,10 +72,8 @@ void Invariant_Mass_vs_pt() {
     "p^{+}p^{-}",
     "K#pi"};
     Int_t colors[6] = { kBlue, kAzure+1, kCyan+1, kGreen+2, kMagenta+2, kOrange+1 };
-    const Int_t   nMassBins = 100;
-    const Float_t massMax   =   5.0;
-    const Int_t   nPtBins   = 100;
-    const Float_t ptMax     =   5.0;
+
+    Long64_t nEntries = TMath::Min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
     TH2D* h2Mpt[6];
     for (Int_t i = 0; i < 6; ++i) {
         h2Mpt[i] = new TH2D(
@@ -88,7 +87,7 @@ void Invariant_Mass_vs_pt() {
 
     for (Long64_t ev = 0; ev < nEntries; ++ev) {
         chain.GetEntry(ev);
-        if (applyTOFEventfilter && (tofExp[0] < 0 || tofExp[1] < 0))
+        if (applyTOFEventfilter && (tofExpMom[0] < 0 || tofExpMom[1] < 0))
             continue;
 
         for (Int_t j = 0; j < 5; ++j) {
@@ -101,8 +100,8 @@ void Invariant_Mass_vs_pt() {
 
             Float_t p1 = TMath::Sqrt(px[0]*px[0] + py[0]*py[0] + pz[0]*pz[0]);
             Float_t p2 = TMath::Sqrt(px[1]*px[1] + py[1]*py[1] + pz[1]*pz[1]);
-            Float_t e1 = TMath::Sqrt(p1*p1 + masses[j]*masses[j]);
-            Float_t e2 = TMath::Sqrt(p2*p2 + masses[j]*masses[j]);
+            Float_t e1 = TMath::Sqrt(p1*p1 + help->pMasses[j]*help->pMasses[j]/1e6);
+            Float_t e2 = TMath::Sqrt(p2*p2 + help->pMasses[j]*help->pMasses[j]/1e6);
 
             Float_t Esum = e1 + e2;
             Float_t pxsum = px[0] + px[1];
@@ -145,8 +144,8 @@ void Invariant_Mass_vs_pt() {
         TLorentzVector l1, l2;
         Double_t p1  = std::hypot(px[0], py[0], pz[0]);
         Double_t p2  = std::hypot(px[1], py[1], pz[1]);
-        Double_t e1  = TMath::Sqrt(p1*p1 + masses[i1]*masses[i1]);
-        Double_t e2  = TMath::Sqrt(p2*p2 + masses[i2]*masses[i2]);
+        Double_t e1  = TMath::Sqrt(p1*p1 + help->pMasses[i1]*help->pMasses[i1]/1e6);
+        Double_t e2  = TMath::Sqrt(p2*p2 + help->pMasses[i2]*help->pMasses[i2]/1e6);
         l1.SetPxPyPzE(px[0], py[0], pz[0], e1);
         l2.SetPxPyPzE(px[1], py[1], pz[1], e2);
         Double_t ivm = (l1 + l2).M();
