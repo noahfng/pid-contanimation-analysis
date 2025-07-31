@@ -31,11 +31,12 @@ void nSigma_Plot(){
     const Double_t nEntriesLimit = 1e7;
     const Bool_t TOFfilter = false;
     const Bool_t KaExclusion = false;
-    const Bool_t PrExclusion = true;
-    const Bool_t plotTPC = false;
-    const Bool_t plotTOF = true;
-    const Bool_t PeakZoom = false;
+    const Bool_t PrExclusion = false;
+    const Bool_t plotTPC = true;
+    const Bool_t plotTOF = false;
+    const Bool_t PeakZoom = true;
     const Bool_t manualPredictPeaks = false;
+    const std::array<bool, nParts> doPid = {{true, false, false, false, false}};
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
@@ -76,6 +77,7 @@ void nSigma_Plot(){
         TString suffix = isTPCmode ? "TPC" : "TOF";
         std::vector<std::vector<TH1F*>> hists(nParts, std::vector<TH1F*>(nSteps,nullptr));
         for (int pid = 0; pid < nParts; ++pid) {
+            if (!doPid[pid]) continue;
             for (int i = 0; i < nSteps; ++i) {
                 TString name1 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s)", 
                         help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data());
@@ -104,6 +106,7 @@ void nSigma_Plot(){
                 if (bin < 0 || bin >= nSteps) 
                     continue;
                 for (int pid = 0; pid < nParts; ++pid) {
+                    if (!doPid[pid]) continue;
                     Float_t val = isTPCmode ? tpcNS[pid][t] : tofNS[pid][t];
                     if (!TMath::IsNaN(val))
                         hists[pid][bin]->Fill(val);
@@ -111,6 +114,7 @@ void nSigma_Plot(){
             }
         }        
         for (int ref = 0; ref < nParts; ++ref) {
+            if (!doPid[ref]) continue;
             TString pdfName = Form("nSigma%s_%s.pdf", suffix.Data(), help->pCodes[ref]);
             TCanvas* c = new TCanvas("c","", 950, 700);
             c->SetLeftMargin(0.15);
