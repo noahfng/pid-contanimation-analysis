@@ -12,52 +12,52 @@
 #include "TLegend.h"
 
 #include <AddTrees.h>
-#include <get_expected_signal.h>
-#include <getReso.h>
+#include <helpers.h>
 
 void nSigmaTPC_vs_nSigmaTOF() {
+    auto help = new helper();
+    const Int_t nParts = helper::nParts;
+    const Int_t NtrkMax = help->NtrkMax;
     const Bool_t manualPredictPeaks = false; // Set to true if you want to manually enter peak positions
-    const Char_t* baseDir        = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     const Int_t   nBins          = 200;
     const Double_t xMin          = -30, xMax = 30;
     const Double_t yMin          = -30, yMax = 30;
-    const Double_t pStart = 0.4, pEnd = 1.5, step = 0.1;
+    const Double_t pStart = 0.4, pEnd = 0.7, step = 0.1;
     const Double_t nEntriesLimit  = 1e7;
-    const Double_t resoTOF[5]   = {0.013, 0.013, 0.013, 0.019, 0.020};
-    const Char_t *subs[5] = {"El", "Mu", "Pi", "Ka", "Pr"};
-    const Int_t   colors[5] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
-    const Double_t masses[5]  = {0.00051099895, 0.1056583755, 0.13957039, 0.493677, 0.93827208816};
-
 
     gStyle->SetPalette(kRainBow);
     gROOT->SetBatch(!manualPredictPeaks);
     TChain chain("twotauchain");
-    AddTrees(chain, baseDir);
+    AddTrees(chain, help->base_dir);
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
     chain.SetBranchStatus("fTrkTOFexpMom", 1);
-    for (Int_t i = 0; i < 5; ++i) {
-        chain.SetBranchStatus(Form("fTrkTPCnSigma%s", subs[i]), 1);
-        chain.SetBranchStatus(Form("fTrkTOFnSigma%s", subs[i]), 1);
-    }
 
-    Float_t inner[2], tofExpMom[2];
-    Float_t tpcNS[5][2], tofNS[5][2];
-    chain.SetBranchAddress("fTrkTPCinnerParam", inner);
-    chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom);
-    for (Int_t i = 0; i < 5; ++i) {
-        chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
-        chain.SetBranchAddress(Form("fTrkTOFnSigma%s", subs[i]), tofNS[i]);
+    for (Int_t i = 0; i < nParts; ++i){
+        chain.SetBranchStatus(Form("fTrkTPCnSigma%s", help->pNames[i]), 1);
+        chain.SetBranchStatus(Form("fTrkTOFnSigma%s", help->pNames[i]), 1);
     }
+    std::vector<Float_t> inner(NtrkMax);
+    std::vector<Float_t> tofExpMom(NtrkMax);
+    std::vector<std::vector<Float_t>> tpcNS(nParts, std::vector<Float_t>(NtrkMax));
+    std::vector<std::vector<Float_t>> tofNS(nParts, std::vector<Float_t>(NtrkMax));
 
+    chain.SetBranchAddress("fTrkTPCinnerParam", inner.data());
+    chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom.data());
+
+    for (Int_t i = 0; i < nParts; ++i) {
+        chain.SetBranchAddress(Form("fTrkTPCnSigma%s", help->pNames[i]), tpcNS[i].data());
+        chain.SetBranchAddress(Form("fTrkTOFnSigma%s", help->pNames[i]), tofNS[i].data());
+    }
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
+
     struct Peak { Double_t mTPC, mTOF, sTPC, sTOF; };
-    for (Int_t i = 0; i < 5; ++i) {
-        TCanvas* c = new TCanvas(Form("c_%s", subs[i]), Form("n#sigma %s", subs[i]), 800, 600);
+    for (Int_t i = 0; i < nParts; ++i) {
+        TCanvas* c = new TCanvas(Form("c_%s", help->pNames[i]), Form("n#sigma %s", help->pNames[i]), 800, 600);
         c->SetLeftMargin(0.125);
         gStyle->SetOptStat(0);
-        c->Print(Form("nSigma2D_%s.pdf[", subs[i]));  
+        c->Print(Form("nSigma2D_%s.pdf[", help->pNames[i]));  
 
         const Int_t nSteps = static_cast<Int_t>(std::floor((pEnd - pStart) / step + 0.5));
         for (int iStep = 0; iStep < nSteps; ++iStep) {
@@ -66,16 +66,16 @@ void nSigmaTPC_vs_nSigmaTOF() {
             Double_t pMid = 0.5 * (pMin + pMax);
 
             TH2F* h2 = new TH2F(
-                Form("h2_%s_%.1f-%.1f", subs[i], pMin, pMax),
+                Form("h2_%s_%.1f-%.1f", help->pNames[i], pMin, pMax),
                 Form("n#sigma_{TPC} vs n#sigma_{TOF} (%s), %.2f < p < %.2f;n#sigma_{TPC};n#sigma_{TOF}",
-                     subs[i], pMin, pMax),
+                     help->pNames[i], pMin, pMax),
                 nBins, xMin, xMax,
                 nBins, yMin, yMax);
             h2->Sumw2();
 
             for (Long64_t ev = 0; ev < nEntries; ++ev) {
                 chain.GetEntry(ev);
-                for (Int_t t = 0; t < 2; ++t) {
+                for (Int_t t = 0; t < NtrkMax; ++t) {
                     if (tofExpMom[t] < pMin || tofExpMom[t] >= pMax) continue;
                     Double_t ntpc = tpcNS[i][t];
                     Double_t ntof = tofNS[i][t];
@@ -106,24 +106,24 @@ void nSigmaTPC_vs_nSigmaTOF() {
                 }
             }
             else {
-                Double_t dRef = get_expected_signal(pMid*1000, masses[i]*1000, 1.0);
-                Double_t resoRefTPC = getReso(kTPC, (Char_t*)subs[i], pMid);
-                Double_t resoRefTOF = getReso(kTOF, (Char_t*)subs[i], pMid);
-                Double_t bRef = pMid/TMath::Sqrt(pMid*pMid + masses[i]*masses[i]);
+                Double_t dRef = help->getTPCSignal(pMid*1000, help->pMasses[i], 1.0);
+                Double_t resoRefTPC = help->getReso(helper::kTPC, help->pNames[i], pMid);
+                Double_t resoRefTOF = help->getReso(helper::kTOF, help->pNames[i], pMid);
+                Double_t bRef = pMid/TMath::Sqrt(pMid*pMid + help->pMasses[i]*help->pMasses[i]);
 
-                for (Int_t hyp = 0; hyp < 5; ++hyp) {
-                    Double_t dHyp = get_expected_signal(pMid*1000, masses[hyp]*1000, 1.0);
+                for (Int_t hyp = 0; hyp < nParts; ++hyp) {
+                    Double_t dHyp = help->getTPCSignal(pMid*1000, help->pMasses[hyp], 1.0);
                     Double_t muTPC = (dHyp/dRef - 1.0)/(resoRefTPC/dRef);
 
-                    Double_t bHyp = pMid/TMath::Sqrt(pMid*pMid + masses[hyp]*masses[hyp]);
-                    Double_t muTOF = (bRef - bHyp)/(bHyp*bHyp*resoTOF[i]);
+                    Double_t bHyp = pMid/TMath::Sqrt(pMid*pMid + help->pMasses[hyp]*help->pMasses[hyp]);
+                    Double_t muTOF = (bRef - bHyp)/(bHyp*bHyp*help->resoTOF[i]);
 
-                    Double_t resoHypTPC = getReso(kTPC, (Char_t*)subs[hyp], pMid);
+                    Double_t resoHypTPC = help->getReso(helper::kTPC, help->pNames[hyp], pMid);
                     Double_t sigma0TPC  = (resoHypTPC/resoRefTPC)*(dHyp/dRef);
                     sigma0TPC = std::clamp(sigma0TPC, 0.5, 15.0);
 
-                    Double_t resoHypTOF = getReso(kTOF, (Char_t*)subs[hyp], pMid);
-                    Double_t sigma0TOF  = (resoTOF[hyp]/resoTOF[i])*(1.0/(bHyp*bHyp));
+                    Double_t resoHypTOF = help->getReso(helper::kTOF, help->pNames[hyp], pMid);
+                    Double_t sigma0TOF  = (help->resoTOF[hyp]/help->resoTOF[i])*(1.0/(bHyp*bHyp));
                     sigma0TOF = std::clamp(sigma0TOF, 0.5, 15.0);
 
                     if (muTPC>=xMin && muTPC<=xMax && muTOF>=yMin && muTOF<=yMax)
@@ -158,7 +158,7 @@ void nSigmaTPC_vs_nSigmaTOF() {
             Int_t b = 5*i;
             const auto &pk = peaks[i];
             TMarker* mk = new TMarker(pk.mTPC, pk.mTOF, 20);
-            mk->SetMarkerColor(colors[i]);   // same color[i] you use for lines
+            mk->SetMarkerColor(help->colors[i]);   // same color[i] you use for lines
             mk->SetMarkerSize(1);
             mk->SetMarkerStyle(kMultiply);
             mk->Draw();
@@ -200,20 +200,20 @@ void nSigmaTPC_vs_nSigmaTOF() {
                     xMin, xMax, yMin, yMax);
 
                 f1->SetParameters(A, muX, sX, muY, sY);
-                f1->SetLineColor(colors[i]);
+                f1->SetLineColor(help->colors[i]);
                 f1->SetLineWidth(1);
                 f1->SetNpx(200);
                 f1->SetNpy(200);
                 f1->SetContour(6);
                 f1->Draw("SAME CONT3");
-                leg->AddEntry(f1, subs[i], "l");
+                leg->AddEntry(f1, help->pNames[i], "l");
             }
             leg->Draw();
-            c->Print(Form("nSigma2D_%s.pdf", subs[i]));
+            c->Print(Form("nSigma2D_%s.pdf", help->pNames[i]));
             delete h2;
         }
 
-        c->Print(Form("nSigma2D_%s.pdf]", subs[i]));
+        c->Print(Form("nSigma2D_%s.pdf]", help->pNames[i]));
         delete c;
     }
 }

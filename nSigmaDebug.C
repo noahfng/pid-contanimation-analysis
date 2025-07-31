@@ -16,54 +16,51 @@
 #include "TSystem.h"
 
 #include <AddTrees.h>
-#include <get_expected_signal.h>
-#include <getReso.h>
-
+#include <helpers.h>
 
 void nSigmaDebug(){
+    auto help = new helper();
+    const Int_t nParts = helper::nParts;
+    const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -12.0, xMax = 20.0;
-    const Double_t pStart = 0.15, pEnd = 0.25, step = 0.1;
+    const Double_t xMin   = -12.0, xMax = 10.0;
+    const Double_t pStart = 0.75, pEnd = 0.85, step = 0.1;
     const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e7;
-    const Bool_t TOFfilter = false;
+    const Bool_t TOFfilter = true;
+    const Bool_t KaExclusion = true;
+    const Bool_t PrExclusion = true;
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
+    const std::array<bool, nParts> doPid = {{true, false, false, false, false}};
 
     gROOT->SetBatch(kFALSE);
     gStyle->SetOptStat(1);
 
-    const Char_t *baseDir = "/home/nfingerle/SMI/UD_LHC23_pass4_SingleGap/0106/B";
     TChain chain("twotauchain");
-    AddTrees(chain, baseDir);
+    AddTrees(chain, help->base_dir);
 
     chain.SetBranchStatus("*", 0);
     chain.SetBranchStatus("fTrkTPCinnerParam", 1);
     chain.SetBranchStatus("fTrkTOFexpMom", 1);
 
-    const Char_t *subs[5] = {"El", "Mu", "Pi", "Ka", "Pr"};
-    for (Int_t i = 0; i < 5; ++i){
-        chain.SetBranchStatus(Form("fTrkTPCnSigma%s", subs[i]), 1);
-        chain.SetBranchStatus(Form("fTrkTOFnSigma%s", subs[i]), 1);
+    for (Int_t i = 0; i < nParts; ++i){
+        chain.SetBranchStatus(Form("fTrkTPCnSigma%s", help->pNames[i]), 1);
+        chain.SetBranchStatus(Form("fTrkTOFnSigma%s", help->pNames[i]), 1);
     }
-    Float_t inner[2], tofExpMom[2];
-    Float_t tpcNS[5][2], tofNS[5][2];
-    chain.SetBranchAddress("fTrkTPCinnerParam", inner);
-    chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom);
-    for (Int_t i = 0; i < 5; ++i){
-        chain.SetBranchAddress(Form("fTrkTPCnSigma%s", subs[i]), tpcNS[i]);
-        chain.SetBranchAddress(Form("fTrkTOFnSigma%s", subs[i]), tofNS[i]);
-    }
-    
-    const Int_t   nParts  = 5;
-    const TString names[nParts]   = {"e", "#mu", "#pi", "K", "p"};
-    const std::array<bool, nParts> doPid = {{false, false, true, false, false}};
-    const Int_t   colors[nParts] = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
-    const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.09, 0.08}; 
-    const Double_t resoTOF[nParts]   = {0.013, 0.013, 0.013, 0.019, 0.020};
-    const Double_t masses[nParts]  = {0.00051099895, 0.1056583755, 0.13957039, 0.493677, 0.93827208816};
+    std::vector<Float_t> inner(NtrkMax);
+    std::vector<Float_t> tofExpMom(NtrkMax);
+    std::vector<std::vector<Float_t>> tpcNS(nParts, std::vector<Float_t>(NtrkMax));
+    std::vector<std::vector<Float_t>> tofNS(nParts, std::vector<Float_t>(NtrkMax));
 
+    chain.SetBranchAddress("fTrkTPCinnerParam", inner.data());
+    chain.SetBranchAddress("fTrkTOFexpMom", tofExpMom.data());
+
+    for (Int_t i = 0; i < nParts; ++i) {
+        chain.SetBranchAddress(Form("fTrkTPCnSigma%s", help->pNames[i]), tpcNS[i].data());
+        chain.SetBranchAddress(Form("fTrkTOFnSigma%s", help->pNames[i]), tofNS[i].data());
+    }
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
 
     auto drawNSigma = [&](Bool_t isTPCmode) {
@@ -79,9 +76,9 @@ void nSigmaDebug(){
             if (!doPid[pid]) continue; 
             for (int i = 0; i < nSteps; ++i) {
                 TString name1 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s)", 
-                        names[pid].Data(), pEdges[i], pEdges[i+1], suffix.Data());
+                        help->pNames[pid], pEdges[i], pEdges[i+1], suffix.Data());
                 TString name2 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts",
-                        names[pid].Data(), pEdges[i], pEdges[i+1], suffix.Data(), names[pid].Data());
+                        help->pNames[pid], pEdges[i], pEdges[i+1], suffix.Data(), help->pNames[pid]);
                 hists[pid][i] = new TH1F(name1, name2, nBins, xMin, xMax);
                 hists[pid][i]->Sumw2(true);
                 hists[pid][i]->SetMarkerStyle(kFullCircle);
@@ -92,8 +89,12 @@ void nSigmaDebug(){
         }
         for (Long64_t ev = 0; ev < nEntries; ++ev) {
             chain.GetEntry(ev);
-            for (int t = 0; t < 2; ++t) {
+            for (int t = 0; t < NtrkMax; ++t) {
                 if (tofExpMom[t] < 0 && (!isTPCmode || TOFfilter)) 
+                    continue;
+                if (KaExclusion && !TMath::IsNaN(tofNS[3][t]) && TMath::Abs(tofNS[3][t]) < 3.0) 
+                    continue;
+                if (PrExclusion && !TMath::IsNaN(tofNS[4][t]) && TMath::Abs(tofNS[4][t]) < 3.0) 
                     continue;
                 Double_t pG = inner[t];
                 int bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG)
@@ -110,7 +111,7 @@ void nSigmaDebug(){
         }        
         for (int ref = 0; ref < nParts; ++ref) {
             if (!doPid[ref]) continue;
-            TString pdfName = Form("nSigma%s_%s_%.2f<p<%.2f.pdf", suffix.Data(), names[ref].Data(), pStart, pEnd);
+            TString pdfName = Form("nSigma%s_%s_%.2f<p<%.2f_Pr+KaExclusion.pdf", suffix.Data(), help->pNames[ref], pStart, pEnd);
             TCanvas* c = new TCanvas("c","", 950, 700);
             c->SetLeftMargin(0.15);
             c->SetLogy();
@@ -124,20 +125,20 @@ void nSigmaDebug(){
                 Double_t sliceMax = pEdges[i+1];
                 Double_t pMid     = 0.5 * (sliceMin + sliceMax);
 
-                Double_t refMass = masses[ref];
-                Double_t dRef = get_expected_signal(pMid * 1000, masses[ref] * 1000, 1.0);
+                Double_t refMass = help->pMasses[ref];
+                Double_t dRef = help->getTPCSignal(pMid * 1000, refMass, 1.0);
                 Double_t bRef = pMid / TMath::Sqrt(pMid * pMid + refMass * refMass);
 
                 for(Int_t hyp=0; hyp < nParts; ++hyp){
-                    Double_t hypMass = masses[hyp];
-                    Double_t dHyp = get_expected_signal(pMid * 1000, hypMass * 1000, 1.0);
+                    Double_t hypMass = help->pMasses[hyp];
+                    Double_t dHyp = help->getTPCSignal(pMid * 1000, hypMass, 1.0);
                     Double_t bHyp = pMid / TMath::Sqrt(pMid * pMid + hypMass * hypMass);
                     if(dRef < 0 || dHyp < 0) continue;
 
                     Double_t sigma0, mu;
                     if (isTPCmode) {
-                        Double_t resoHypAbs = getReso(kTPC, (Char_t*)subs[hyp], pMid); 
-                        Double_t resoRefAbs = getReso(kTPC, (Char_t*)subs[ref],  pMid); 
+                        Double_t resoHypAbs = help->getReso(helper::kTPC, help->pNames[hyp], pMid); 
+                        Double_t resoRefAbs = help->getReso(helper::kTPC, help->pNames[ref],  pMid); 
 
                         Double_t fracHyp = resoHypAbs / dHyp;
                         Double_t fracRef = resoRefAbs / dRef;
@@ -145,8 +146,8 @@ void nSigmaDebug(){
                         sigma0 = (fracHyp / fracRef) * (dHyp / dRef);
                         mu     = (dHyp/dRef - 1.0) / fracRef;
                     } else {
-                        Double_t resoHypAbs = getReso(kTOF, (Char_t*)subs[hyp], pMid);
-                        Double_t resoRefAbs = getReso(kTOF, (Char_t*)subs[ref], pMid);
+                        Double_t resoHypAbs = help->getReso(helper::kTOF, help->pNames[hyp], pMid); 
+                        Double_t resoRefAbs = help->getReso(helper::kTOF, help->pNames[ref],  pMid); 
                         sigma0 = (resoHypAbs / resoRefAbs) * (1.0 / (bHyp * bHyp));
                         mu     = (bRef - bHyp) / (bHyp * bHyp * resoHypAbs);
                     }
@@ -223,12 +224,12 @@ void nSigmaDebug(){
                         merged.push_back(s);
                     }
                 }
-                std::cout << ">> Automatic peaks for ref=" << names[ref] << "  p in [" 
+                std::cout << ">> Automatic peaks for ref=" << help->pNames[ref] << "  p in [" 
                 << sliceMin << "," << sliceMax << "] GeV/c:\n";
                 for (size_t j = 0; j < merged.size(); ++j) {
                     const auto &pk = merged[j];
                     std::cout << Form("   peak %zu (ids:", j);
-                    for (auto id : pk.merged_ids) std::cout << " " << names[id];
+                    for (auto id : pk.merged_ids) std::cout << " " << help->pNames[id];
                     std::cout << Form(" ) -> μ = %.3f, σ = %.3f\n", pk.mu, pk.sigma);
                 }
 
@@ -316,7 +317,7 @@ void nSigmaDebug(){
                 for (Int_t i = 0; i < nG; ++i) {
                     Double_t mu = means[i];
                     TLine *l = new TLine(mu, 0, mu, yMax);
-                    l->SetLineColor(colors[i % nParts]);
+                    l->SetLineColor(help->colors[i % nParts]);
                     l->Draw();
                 }
                 
@@ -329,7 +330,7 @@ void nSigmaDebug(){
                     Double_t mu  = sum->GetParameter(3*i + 1);
                     Double_t sig = sum->GetParameter(3*i + 2);
                     std::cout << Form("A = %.3f, μ = %.3f, σ = %.3f\n", A, mu, sig);
-                    g->SetLineColor(colors[i % nParts]);   
+                    g->SetLineColor(help->colors[i % nParts]);   
                     g->SetLineStyle(2);
                     g->SetNpx(500);
                     g->Draw("same");

@@ -91,7 +91,7 @@ void nSigma_Plot(){
         }
         for (Long64_t ev = 0; ev < nEntries; ++ev) {
             chain.GetEntry(ev);
-            for (int t = 0; t < help->NtrkMax; ++t) {
+            for (int t = 0; t < NtrkMax; ++t) {
                 if (tofExpMom[t] < 0 && (!isTPCmode || TOFfilter)) 
                     continue;
                 if (KaExclusion && !TMath::IsNaN(tofNS[3][t]) && TMath::Abs(tofNS[3][t]) < 3.0) 
