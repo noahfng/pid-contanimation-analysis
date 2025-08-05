@@ -181,7 +181,7 @@ class helper{
                     Double_t A  = par[offA + ig];
                     Double_t mu = par[offM + ig];
                     Double_t s = par[offS + ig];
-                    yfit += A * TMath::Gaus(x, mu, s, kTRUE);
+                    yfit += A * TMath::Gaus(x, mu, s, kFALSE);
                 }
 
                 chi2 += (y - yfit) * (y - yfit) / (err * err);
@@ -196,7 +196,7 @@ class helper{
     ROOT::Math::Functor fcn(chi2_fcn, nPar);
     minimizer->SetFunction(fcn);
 
-    for (int i = 0; i < nPar; ++i) {
+    for (Int_t i = 0; i < nPar; ++i) {
         const char* name = func->GetParName(i);
         Double_t    val  = func->GetParameter(i);
         Double_t    err  = func->GetParError(i);
@@ -210,16 +210,16 @@ class helper{
             minimizer->SetVariable(i, name, val, step);
         }
     }
-
+    minimizer->SetPrintLevel(1);
     minimizer->Minimize();
 
     const Double_t* xs = minimizer->X();
-    for (int i = 0; i < nPar; ++i) func->SetParameter(i, xs[i]);
+    for (Int_t i = 0; i < nPar; ++i) func->SetParameter(i, xs[i]);
 
     Double_t chi2 = chi2_fcn(xs);
-    int usedBins = 0;
+    Int_t usedBins = 0;
     auto countBins = [&](TH1* h) {
-        for (int ib = 1; ib <= h->GetNbinsX(); ++ib) {
+        for (Int_t ib = 1; ib <= h->GetNbinsX(); ++ib) {
             Double_t x   = h->GetBinCenter(ib);
             Double_t err = h->GetBinError(ib);
             if (err > 0 && x >= xlo && x <= xhi) ++usedBins;
@@ -227,7 +227,7 @@ class helper{
     };
     countBins(h1); 
     countBins(h2);
-    int ndf = usedBins - nPar;
+    Int_t ndf = usedBins - nPar;
     func->SetChisquare(chi2);
     func->SetNDF(ndf);
 }
