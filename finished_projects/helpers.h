@@ -210,7 +210,6 @@ class helper{
             minimizer->SetVariable(i, name, val, step);
         }
     }
-    minimizer->SetPrintLevel(1);
     minimizer->Minimize();
 
     const Double_t* xs = minimizer->X();
