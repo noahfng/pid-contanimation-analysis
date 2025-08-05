@@ -23,7 +23,7 @@ void nSigma_Plot(){
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -12.0, xMax = 10.0;
+    const Double_t xMin   = -10.0, xMax = 10.0;
     const Double_t pStart = 0.45, pEnd = 0.55, step = 0.1;
     const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
@@ -206,14 +206,14 @@ void nSigma_Plot(){
 
                     Double_t sigma0, mu;
                     if (isTPCmode) {
-                        Double_t resoHyp = help->resoTPC[hyp];
-                        Double_t resoRef = help->resoTPC[ref];
+                        Double_t resoHyp = help->resoTPC[hyp][ref];
+                        Double_t resoRef = help->resoTPC[ref][hyp];
 
                         sigma0 = (resoHyp / resoRef) * (dHyp / dRef);
                         mu     = (dHyp/dRef - 1.0) / resoRef;
                     } else {
-                        Double_t resoHyp = help->resoTOF[hyp];
-                        Double_t resoRef = help->resoTOF[ref];
+                        Double_t resoHyp = help->resoTOF[hyp][ref];
+                        Double_t resoRef = help->resoTOF[ref][hyp];
                         sigma0 = (resoHyp / resoRef) * (1.0 / (bHyp * bHyp));
                         mu     = (bRef - bHyp) / (bHyp * bHyp * resoRef);
                     }
@@ -430,8 +430,31 @@ void nSigma_Plot(){
                     leg1->SetFillStyle(0);
                     std::vector<Double_t> par(sum->GetNpar());
                     for(Int_t i=0; i<sum->GetNpar(); ++i) par[i] = sum->GetParameter(i);
+                    std::vector<Double_t> areas_noK(nG), areas_wK(nG);
+                    for (Int_t ig = 0; ig < nG; ++ig) {
+                        Double_t A1   = par[offA1 + ig];
+                        Double_t A2   = par[offA2 + ig];
+                        Double_t sig  = par[offS  + ig];
+                        areas_noK[ig] = A1  * sig * TMath::Sqrt(2*TMath::Pi());
+                        areas_wK [ig] = A2  * sig * TMath::Sqrt(2*TMath::Pi());
+                    }
 
-                    const Int_t nPoints = 500;  
+                    double sum01_noK = areas_noK[0] + areas_noK[1];
+                    double sum01_wK  = areas_wK [0] + areas_wK [1];
+                    double sum23_noK = areas_noK[2] + areas_noK[3];
+                    double sum23_wK  = areas_wK [2] + areas_wK [3];
+                    double R01 = (sum01_noK > 0) ? (sum01_noK - sum01_wK) / sum01_noK : 0.0;
+
+                    double R_e = 0.0;
+                    if (nG > 3 && sum23_noK > 0) {
+                        R_e = (sum23_noK - sum23_wK) / sum23_noK;
+                    }
+
+                    for(i = 0; i < nG; ++i){
+                        std::cout << Form("Peak-%d-area: %.2f -> %.2f\n", i+1, areas_noK[i], areas_wK[i]);
+                    }
+                    std::cout << Form("summed e-Peak-Reduction = %.2f %%\n", R_e   * 100);
+                    const Int_t nPoints = 500; 
                     Double_t xlo = fit_lo, xhi = fit_hi;
                     Double_t dx  = (xhi - xlo)/(nPoints-1);
                     std::vector<Double_t> xv(nPoints), y1(nPoints), y2(nPoints);

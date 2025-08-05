@@ -23,8 +23,22 @@ class helper{
   const Double_t pMasses[nParts] = {0.51099895, 105.6583755,  139.57039, 493.677, 938.27208816};
   const Double_t pCharges[nParts] = {1, 1, 1, 1, 1};
 
-  const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.09, 0.08}; 
-  const Double_t resoTOF[nParts]   = {0.013, 0.013, 0.013, 0.019, 0.020};
+  //const Double_t resoTPC[nParts] = {0.085, 0.072, 0.074, 0.09, 0.08}; 
+  //const Double_t resoTOF[nParts]   = {0.013, 0.013, 0.013, 0.019, 0.020};
+
+  const Double_t resoTPC[nParts][nParts] = {
+    {1.000, 0.080, 0.080, 0.085, 0.075},
+    {0.090, 1.000, 0.080, 0.090, 0.085},
+    {0.090, 0.080, 1.000, 0.090, 0.085},
+    {0.090, 0.080, 0.080, 1.000, 0.085},
+    {0.090, 0.080, 0.080, 0.090, 1.000}};
+
+  const Double_t resoTOF[nParts][nParts] = {
+    {1.0000, 0.009, 0.009, 0.019, 0.021},
+    {0.0075, 1.000, 0.009, 0.019, 0.021},
+    {0.0075, 0.009, 1.000, 0.019, 0.021},
+    {0.0073, 0.012, 0.012, 1.000, 0.021},
+    {0.0073, 0.012, 0.012, 0.014, 1.000}};
 
   Double_t beta(Float_t mass, Float_t mom)
   {
@@ -53,12 +67,12 @@ class helper{
     {
       auto dRef = getTPCSignal(mom, pMasses[ref], pCharges[ref]);
       auto dHyp = getTPCSignal(mom, pMasses[hyp], pCharges[hyp]);
-      auto rRef = resoTPC[hyp];
+      auto rRef = resoTPC[ref][hyp];
       val = (dHyp/dRef - 1.0) / rRef;
     } else {
       auto bRef = beta(pMasses[ref], mom);
       auto bHyp = beta(pMasses[hyp], mom);
-      auto rRef = resoTOF[hyp];
+      auto rRef = resoTOF[ref][hyp];
       val = (bRef - bHyp) / (bHyp*bHyp * rRef);
     }
     return val;
@@ -67,7 +81,6 @@ class helper{
   enum ResoMode { kTPC, kTOF };
 
   Double_t getReso(ResoMode mode, const Char_t* hypo, Float_t mom) {
-      // open the same file just once
       static TFile* file = TFile::Open(
           "UD_LHC23_pass4_SingleGap/nSigma_Resolution.root", "READ"
       );
@@ -76,7 +89,6 @@ class helper{
           return -1;
       }
 
-      // build name: "nSigmaTPCresEl" or "nSigmaTOFresPr", etc.
       const Char_t* prefix = (mode == kTPC ? "nSigmaTPCres" : "nSigmaTOFres");
       TString gname = Form("%s%s", prefix, hypo);
 
