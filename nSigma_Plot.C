@@ -28,7 +28,7 @@ void nSigma_Plot(){
     const Double_t muWindow = 0.5;
     const Double_t mergeDistanceFactor = 1.0;
     const Double_t nEntriesLimit = 1e7;
-    const Bool_t TOFfilter = true;
+    const Bool_t TOFfilter = false;
     const Bool_t KaExclusion = false;
     const Bool_t PrExclusion = false;
     const Bool_t FitKaonExclComp = true;
@@ -194,29 +194,30 @@ void nSigma_Plot(){
                 Double_t sliceMax = pEdges[i+1];
                 Double_t pMid     = 0.5 * (sliceMin + sliceMax);
 
-                Double_t refMass = help->pMasses[ref];
-                Double_t dRef = help->getTPCSignal(pMid * 1000, help->pMasses[ref], 1.0);
-                Double_t bRef = help->beta(refMass, pMid);
-
-                for(Int_t hyp=0; hyp < nParts; ++hyp){
+                for (Int_t hyp = 0; hyp < nParts; ++hyp) {
                     Double_t hypMass = help->pMasses[hyp];
-                    Double_t dHyp = help->getTPCSignal(pMid * 1000, hypMass, 1.0);
-                    Double_t bHyp = pMid / TMath::Sqrt(pMid * pMid + hypMass * hypMass);
-                    if(dRef < 0 || dHyp < 0) continue;
-
                     Double_t sigma0, mu;
                     if (isTPCmode) {
+                        Double_t dRef = help->getTPCSignal(pMid * 1000, help->pMasses[ref], 1.0);
+                        Double_t dHyp = help->getTPCSignal(pMid * 1000, hypMass, 1.0);
+                        if (dRef < 0 || dHyp < 0) 
+                            continue;
+
                         Double_t resoHyp = help->resoTPC[hyp][ref];
                         Double_t resoRef = help->resoTPC[ref][hyp];
-
                         sigma0 = (resoHyp / resoRef) * (dHyp / dRef);
                         mu     = (dHyp/dRef - 1.0) / resoRef;
-                    } else {
+                    }
+                    else {
+                        Double_t bRef = help->beta(help->pMasses[ref], pMid*1000);
+                        Double_t bHyp = help->beta(help->pMasses[hyp], pMid*1000);
+
                         Double_t resoHyp = help->resoTOF[hyp][ref];
                         Double_t resoRef = help->resoTOF[ref][hyp];
                         sigma0 = (resoHyp / resoRef) * (1.0 / (bHyp * bHyp));
                         mu     = (bRef - bHyp) / (bHyp * bHyp * resoRef);
                     }
+
                     if (mu < xMin || mu > xMax) continue;
 
                     Int_t    bin = h1->FindBin(mu);        
