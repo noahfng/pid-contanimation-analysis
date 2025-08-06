@@ -32,6 +32,7 @@ void nSigma_vs_p_Plot() {
     const Double_t pMin = 0.1, pMax = 10.0;
     const Int_t nParts = helper::nParts;
     auto NtrkMax = help->NtrkMax;
+    const std::array<Bool_t, nParts> doPid = {{false, false, false, true, false}};
 
     TChain chain("twotauchain");
     AddTrees(chain, help->base_dir);
@@ -64,6 +65,7 @@ void nSigma_vs_p_Plot() {
     TH2F* histTPC[nParts];
     TH2F* histTOF[nParts];
     for (Int_t i = 0; i < nParts; ++i) {
+        if(!doPid[i]) continue;
         histTPC[i] = new TH2F(
           Form("tpc_%s", help->pNames[i]),
           Form("n#sigma_{%s} vs p (TPC);p [GeV/c];n#sigma_{%s}", help->pCodes[i], help->pCodes[i]),
@@ -87,8 +89,7 @@ void nSigma_vs_p_Plot() {
                 continue;
             if (tofFilter && tofExpMom[tr]< 0)
                 continue;
-
-            for (Int_t sp = 0; sp < nParts; ++sp) {
+            for (Int_t sp = 0; sp < nParts; ++sp) if(doPid[sp]) {
                 if(plotTPC) histTPC[sp]->Fill(p, tpcNS[sp][tr]);
                 if (plotTOF)
                     histTOF[sp]->Fill(p, tofNS[sp][tr]);
@@ -100,6 +101,7 @@ void nSigma_vs_p_Plot() {
     TGraph* tofCurves[nParts][nParts];
 
     for (Int_t ref = 0; ref < nParts; ++ref) {
+        if (!doPid[ref]) continue;
         for (Int_t hyp = 0; hyp < nParts; ++hyp) {
             std::vector<Double_t> xv_tpc, yv_tpc;
             std::vector<Double_t> xv_tof, yv_tof;
@@ -145,6 +147,7 @@ void nSigma_vs_p_Plot() {
     c->SetLogx();
 
     for (Int_t i = 0; i < 5; ++i) {
+        if (!doPid[i]) continue;  
         if (plotTPC) {
             leg->Clear();
             for (Int_t hyp = 0; hyp < 5; ++hyp) leg->AddEntry(tpcCurves[i][hyp], help->pCodes[hyp], "l");
