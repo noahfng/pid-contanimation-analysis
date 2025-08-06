@@ -143,7 +143,8 @@ class helper{
             minimizer->SetVariable(i, name, val, step);
         }
     }
-
+    minimizer->SetMaxFunctionCalls(50000);   
+    minimizer->SetMaxIterations(50000);
     minimizer->Minimize();
 
     const Double_t* xs = minimizer->X();
@@ -222,6 +223,8 @@ class helper{
             minimizer->SetVariable(i, name, val, step);
         }
     }
+    minimizer->SetMaxFunctionCalls(50000);   
+    minimizer->SetMaxIterations(50000);
     minimizer->Minimize();
 
     const Double_t* xs = minimizer->X();
