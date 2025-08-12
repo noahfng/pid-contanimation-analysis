@@ -2,6 +2,7 @@
 #include <vector>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 #include "TROOT.h"
 #include "TStyle.h"
@@ -17,6 +18,51 @@
 
 #include <AddTrees.h>
 #include <helpers.h>
+
+static inline Double_t GaussIntegral(Double_t A, Double_t mu, Double_t sig,
+                                     Double_t a, Double_t b)
+{
+    const Double_t invsqrt2 = 1.0 / TMath::Sqrt(2.0);
+    const Double_t t1 = (b - mu) * invsqrt2 / sig;
+    const Double_t t0 = (a - mu) * invsqrt2 / sig;
+    return A * sig * TMath::Sqrt(TMath::Pi()/2.0) * (TMath::Erf(t1) - TMath::Erf(t0));
+}
+
+static inline Double_t ModelIntegral(Int_t whichHist, Double_t a, Double_t b,
+    const std::vector<Double_t>& par,
+    Int_t nG, Int_t offA1, Int_t offA2, Int_t offM, Int_t offS, Int_t offP1, Int_t offP2)
+{
+    Double_t m = 0.0;
+    const Int_t offA = (whichHist==0 ? offA1 : offA2);
+    const Int_t offP = (whichHist==0 ? offP1 : offP2);
+    m += par[offP] * (b - a); 
+    for (Int_t ig=0; ig<nG; ++ig) {
+        const Double_t A   = par[offA + ig];
+        const Double_t mu  = par[offM + ig];
+        const Double_t sig = par[offS + ig];
+        m += GaussIntegral(A, mu, sig, a, b);
+    }
+    return std::max(m, 1e-12);
+}
+
+static inline std::pair<Double_t,Double_t> PoissonDeviance(
+    TH1F* h, Int_t whichHist, const std::vector<Double_t>& par,
+    Int_t nG, Int_t offA1, Int_t offA2, Int_t offM, Int_t offS, Int_t offP1, Int_t offP2)
+{
+    Double_t D = 0.0, N = 0.0;
+    const Int_t nb = h->GetNbinsX();
+    for (Int_t ib=1; ib<=nb; ++ib) {
+        const Double_t n  = h->GetBinContent(ib);
+        const Double_t a  = h->GetBinLowEdge(ib);
+        const Double_t b  = h->GetBinLowEdge(ib+1);
+        const Double_t mu = ModelIntegral(whichHist, a, b, par, nG, offA1, offA2, offM, offS, offP1, offP2);
+        N += n;
+        if (n > 0.0) D += 2.0 * (mu - n + n * std::log(n/mu));
+        else         D += 2.0 * mu;
+    }
+    return {D, N};
+}
+
 
 void nSigma_Plot_ExclComp(){
     auto help = new helper();
@@ -85,12 +131,12 @@ void nSigma_Plot_ExclComp(){
             std::vector<std::vector<TH1F*>> h_no(nParts, std::vector<TH1F*>(nSteps,nullptr));
             std::vector<std::vector<TH1F*>> h_w(nParts, std::vector<TH1F*>(nSteps,nullptr));
         
-            for (int pid=0; pid<nParts; ++pid) if (doPid[pid]) {
-                for (int i=0; i<nSteps; ++i) {
+            for (Int_t pid=0; pid<nParts; ++pid) if (doPid[pid]) {
+                for (Int_t i=0; i<nSteps; ++i) {
                         auto name_no = Form("n#sigma_%s %g < p < %g GeV/c (%s-no%s)", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), name);
-                        auto name_w = Form("n#sigma_%s %g < p < %g GeV/c (%s-%s)", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), name);
+                        auto name_w = Form("n#sigma_%s %g < p < %g GeV/c (%s-%.2f-%s)", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), sigmaExcl, name);
                         auto title_no = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-no%s); n#sigma_{%s}; Counts", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), name, help->pCodes[pid]);
-                        auto title_w = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-%s); n#sigma_{%s}; Counts", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), name, help->pCodes[pid]);
+                        auto title_w = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-%.2f-%s); n#sigma_{%s}; Counts", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), sigmaExcl, name, help->pCodes[pid]);
                         h_no[pid][i] = new TH1F(name_no, title_no, nBins, xMin, xMax);
                         h_w [pid][i] = new TH1F(name_w, title_w, nBins, xMin, xMax);
                         h_no[pid][i]->SetMarkerStyle(kFullCircle);
@@ -380,6 +426,19 @@ void nSigma_Plot_ExclComp(){
                         par[i] = sum->GetParameter(i);
                         err[i] = sum->GetParError(i);
                     }
+
+                    auto [D1,N1] = PoissonDeviance(h1, 0, par, nG, offA1, offA2, offM, offS, offP1, offP2);
+                    auto [D2,N2] = PoissonDeviance(h2, 1, par, nG, offA1, offA2, offM, offS, offP1, offP2);
+                    const Double_t D  = D1 + D2;
+                    const Double_t N  = N1 + N2;
+                    const Int_t    k  = 4*nG + 2; 
+                    const Double_t AIC  = D + 2.0*k;
+                    const Double_t BIC  = D + k*std::log(std::max(1.0, N));
+
+                    const Double_t chi2 = sum->GetChisquare();
+                    const Int_t    ndf  = sum->GetNDF();
+                    const Double_t pval = TMath::Prob(chi2, ndf);
+
                     std::vector<Double_t> areas_noK(nG), areas_wK(nG), err_areas_noK(nG), err_areas_wK(nG);
                     const Double_t factor = TMath::Sqrt(2*TMath::Pi());
                     for (Int_t ig = 0; ig < nG; ++ig) {
@@ -406,7 +465,10 @@ void nSigma_Plot_ExclComp(){
                     for(i = 0; i < nG; ++i){
                        std::cout << Form("Peak-%d-area: %.2f ± %.2f -> %.2f ± %.2f\n", i+1, areas_noK[i], err_areas_noK[i], areas_wK[i], err_areas_wK[i]);
                     }
-                    std::cout << sum->GetChisquare()/sum->GetNDF() << std::endl;
+                    std::cout << "D/N: "<< (N>0?D/N:std::numeric_limits<double>::quiet_NaN()) << std::endl;
+                    std::cout << "AIC: "<< AIC << std::endl;
+                    std::cout << "BIC: "<< BIC << std::endl;
+                    std::cout << "Chi2: "<< sum->GetChisquare()/sum->GetNDF() << std::endl;
                     const Int_t nPoints = 500; 
                     Double_t xlo = fit_lo, xhi = fit_hi;
                     Double_t dx  = (xhi - xlo)/(nPoints-1);
