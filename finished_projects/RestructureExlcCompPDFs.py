@@ -56,12 +56,10 @@ def merge(file_list, out_pdf, cols=2, rows=3, trim=(0,0,0,0),
           safe=0.997, prepend_pages=None, title_margin=0.02):
     writer = PdfWriter()
 
-    # --- Eingabeseiten sammeln ---
     pages = []
     for _, path in file_list:
         pages.extend(PdfReader(path).pages)
 
-    # --- prepend_pages in Liste verwandeln (None / single / list/tuple) ---
     if prepend_pages is None:
         prepend_pages = []
     elif not isinstance(prepend_pages, (list, tuple)):
@@ -69,36 +67,31 @@ def merge(file_list, out_pdf, cols=2, rows=3, trim=(0,0,0,0),
     else:
         prepend_pages = list(prepend_pages)
 
-    # --- Seitenlayout bestimmen (W,H) ---
     if pages:
         l0, b0, r0, t0 = smallest_defined_box(pages[0])
         w0, h0 = r0 - l0, t0 - b0
         tl, tr, tb, tt = trim
         l0 += tl*w0; r0 -= tr*w0; b0 += tb*h0; t0 -= tt*h0
         cw0, ch0 = r0 - l0, t0 - b0
-        cell_w, cell_h = ch0, cw0        # wegen 90°-Rotation
+        cell_w, cell_h = ch0, cw0       
         W = cols * cell_w
         H = rows * cell_h
     elif prepend_pages:
-        # Fallback: orientiere dich an der ersten Titelseite
         l1, b1, r1, t1 = smallest_defined_box(prepend_pages[0])
         W, H = (r1 - l1), (t1 - b1)
     else:
-        # letzter Fallback: A4
+
         W, H = 595, 842
 
-    # --- Titelseiten voranstellen ---
     for p in prepend_pages:
         writer.add_page(render_page_to_size(p, W, H, margin_frac=title_margin))
 
-    # --- Wenn keine Mosaik-Seiten: direkt schreiben ---
     if not pages:
         with open(out_pdf, "wb") as f:
             writer.write(f)
         print(f"Erstellt: {out_pdf}")
         return
 
-    # --- Mosaik-Seiten bauen (wie gehabt) ---
     tl, tr, tb, tt = trim
     cell_w = W / cols
     cell_h = H / rows
@@ -116,7 +109,7 @@ def merge(file_list, out_pdf, cols=2, rows=3, trim=(0,0,0,0),
             src.cropbox = RectangleObject([l, b, r, t])
 
             cx_src, cy_src = (l + r)/2.0, (b + t)/2.0
-            rw, rh = h, w  # wegen Rotation
+            rw, rh = h, w 
             s = min(cell_w / rw, cell_h / rh) * safe
 
             col, row = idx % cols, idx // cols
@@ -143,10 +136,10 @@ if os.path.exists(peak_path):
     try:
         pr = PdfReader(peak_path)
         pages = pr.pages
-        if len(pages) > 0: peak_kaon_pages.append(pages[0])   # Seite 1
-        if len(pages) > 1: peak_proton_pages.append(pages[1]) # Seite 2
-        if len(pages) > 2: peak_kaon_pages.append(pages[2])   # Seite 3
-        if len(pages) > 3: peak_proton_pages.append(pages[3]) # Seite 4
+        if len(pages) > 0: peak_kaon_pages.append(pages[0])   
+        if len(pages) > 1: peak_proton_pages.append(pages[1]) 
+        if len(pages) > 2: peak_kaon_pages.append(pages[2])  
+        if len(pages) > 3: peak_proton_pages.append(pages[3]) 
     except Exception as e:
         print("Warnung: Peak PDF konnte nicht gelesen werden:", e)
 
