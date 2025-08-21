@@ -244,9 +244,9 @@ public:
 
         auto chi2_fcn = [&](const Double_t* par0) {
             std::vector<Double_t> par(par0, par0 + nPar);
+            for (Int_t i = 0; i < nPar; ++i) func->SetParameter(i, par[i]);
             TVectorD expected = BuildExpectedVector(cm, cmHists, par, nG, offA1, offA2, offM, offS, offP1, offP2, xlo, xhi, nBins);
             const Double_t chi2_cov = Chi2_withCM(cm, expected);
-            for (Int_t i = 0; i < nPar; ++i) func->SetParameter(i, par[i]);
             // -------------------- old chi2 calculation --------------------
             //auto calc = [&](TH1* h, Int_t offA, Int_t offP) {
             //    Double_t chi2 = 0; 
@@ -266,6 +266,7 @@ public:
             //    }
             //    return chi2;
             //};
+            // return calc(h1, offA1, offP1) + calc(h2, offA2, offP2);
             return chi2_cov;
         };
 
