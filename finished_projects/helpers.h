@@ -21,8 +21,8 @@ public:
     enum {nParts = 5};
     const Int_t colors[nParts]  = {kBlue, kGreen+2, kOrange+7, kMagenta+2, kCyan+1};
     const Char_t* dNames[2] = {"TPC", "TOF"};
-    const Char_t* pNames[nParts]   = {"El", "Mu", "Pi", "Ka", "Pr"};
-    const Char_t* pCodes[nParts]   = {"e", "#mu", "#pi", "K", "p"};
+    const Char_t* pNames[nParts] = {"El", "Mu", "Pi", "Ka", "Pr"};
+    const Char_t* pCodes[nParts] = {"e", "#mu", "#pi", "K", "p"};
     const Double_t pMasses[nParts] = {0.51099895, 105.6583755,  139.57039, 493.677, 938.27208816};
     const Double_t pCharges[nParts] = {1, 1, 1, 1, 1};
 
@@ -83,28 +83,30 @@ public:
         return A * sig * TMath::Sqrt(TMath::Pi()/2.0) * (TMath::Erf(t1) - TMath::Erf(t0));
     };
 
-    Double_t ModelIntegral(Int_t whichHist, Double_t a, Double_t b, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM, Int_t offS, Int_t offP1, Int_t offP2){
-        Double_t m = 0.0;
-        const Int_t offA = (whichHist==0 ? offA1 : offA2);
-        const Int_t offP = (whichHist==0 ? offP1 : offP2);
-        m += par[offP] * (b - a); 
-        for (Int_t ig=0; ig<nG; ++ig) {
-            const Double_t A   = par[offA + ig];
-            const Double_t mu  = par[offM + ig];
-            const Double_t sig = par[offS + ig];
-            m += GaussIntegral(A, mu, sig, a, b);
-        }
-        return std::max(m, 1e-12);
-    };
+    inline Double_t ModelIntegral(Int_t h, Double_t a, Double_t b, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM1, Int_t offM2, Int_t offS1, Int_t offS2, Int_t offP1, Int_t offP2) {
+        const Int_t offA = (h == 0 ? offA1 : offA2);
+        const Int_t offM = (h == 0 ? offM1 : offM2);
+        const Int_t offS = (h == 0 ? offS1 : offS2);
+        const Int_t offP = (h == 0 ? offP1 : offP2);
 
-    std::pair<Double_t,Double_t> PoissonDeviance(TH1F* h, Int_t whichHist, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM, Int_t offS, Int_t offP1, Int_t offP2){
+        Double_t I = par[offP] * (b - a);  
+        for (Int_t j = 0; j < nG; ++j) {
+            const Double_t A   = par[offA + j];
+            const Double_t mu  = par[offM + j];
+            const Double_t sig = par[offS + j];
+            I += GaussIntegral(A, mu, sig, a, b);
+        }
+        return I;
+    }
+
+    std::pair<Double_t,Double_t> PoissonDeviance(TH1F* h, Int_t whichHist, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM1, Int_t offM2, Int_t offS1, Int_t offS2, Int_t offP1, Int_t offP2){
         Double_t D = 0.0, N = 0.0;
         const Int_t nb = h->GetNbinsX();
         for (Int_t ib=1; ib<=nb; ++ib) {
             const Double_t n  = h->GetBinContent(ib);
             const Double_t a  = h->GetBinLowEdge(ib);
             const Double_t b  = h->GetBinLowEdge(ib+1);
-            const Double_t mu = ModelIntegral(whichHist, a, b, par, nG, offA1, offA2, offM, offS, offP1, offP2);
+            const Double_t mu = ModelIntegral(whichHist, a, b, par, nG, offA1, offA2, offM1, offM2, offS1, offS2, offP1, offP2);
             N += n;
             if (n > 0.0) D += 2.0 * (mu - n + n * std::log(n/mu));
             else         D += 2.0 * mu;
@@ -132,19 +134,17 @@ public:
         return gr->Eval(mom);
     };
 
-    TVectorD BuildExpectedVector(covarianceMatrix* cm, const std::vector<TH1D*>& histos, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM, Int_t offS, Int_t offP1, Int_t offP2, Double_t xlo, Double_t xhi, Double_t nBins) {
+    TVectorD BuildExpectedVector(TH1* h1, TH1* h2, covarianceMatrix* cm, const std::vector<TH1D*>& histos, const std::vector<Double_t>& par, Int_t nG, Int_t offA1, Int_t offA2, Int_t offM1, Int_t offM2, Int_t offS1, Int_t offS2, Int_t offP1, Int_t offP2, Double_t nBins) {
         const auto bins2c4f = cm->bins2c4f(); 
         const Int_t nbins   = cm->observations().GetNrows();
         TVectorD expected(nbins);
-        const Double_t xrange = xhi - xlo;
-        const Double_t binWidth = xrange / nBins;
         Int_t k = 0;
         for (Int_t h = 0; h < (Int_t)histos.size(); ++h) {
             auto* ax = histos[h]->GetXaxis();
             for (Int_t binAbs : bins2c4f[h]) {
             const Double_t a = ax->GetBinLowEdge(binAbs);
             const Double_t b = ax->GetBinUpEdge(binAbs);
-            expected[k++] = ModelIntegral(h, a, b, par, nG, offA1, offA2, offM, offS, offP1, offP2)/binWidth;
+            expected[k++] = ModelIntegral(h, a, b, par, nG, offA1, offA2, offM1, offM2, offS1, offS2, offP1, offP2);
             }
         }
         return expected;
@@ -232,8 +232,7 @@ public:
         func->SetNDF(ndf);
     };
 
-    inline void FitHistogramsByChi2(TH1* h1, TH1* h2, TF1* func, Int_t nG, Double_t xlo, Double_t xhi, covarianceMatrix* cm, const std::vector<TH1D*>& cmHists, const Double_t eigenThr, const Double_t nBins) {
-        func->SetRange(xlo, xhi);
+    inline void FitHistogramsExclCompByChi2(TH1* h1, TH1* h2, TF1* func, Int_t nG, covarianceMatrix* cm, const std::vector<TH1D*>& cmHists, const Double_t eigenThr, const Double_t nBins) {
         const Int_t nPar = 4*nG +2;
         const Int_t offA1 = 0;         // Amplitudes for h1
         const Int_t offA2 = nG;        // Amplitudes for h2
@@ -245,7 +244,7 @@ public:
         auto chi2_fcn = [&](const Double_t* par0) {
             std::vector<Double_t> par(par0, par0 + nPar);
             for (Int_t i = 0; i < nPar; ++i) func->SetParameter(i, par[i]);
-            TVectorD expected = BuildExpectedVector(cm, cmHists, par, nG, offA1, offA2, offM, offS, offP1, offP2, xlo, xhi, nBins);
+            TVectorD expected = BuildExpectedVector(h1, h2, cm, cmHists, par, nG, offA1, offA2, offM, offM, offS, offS, offP1, offP2, nBins);
             const Double_t chi2_cov = Chi2_withCM(cm, expected);
             return chi2_cov;
         };
@@ -273,20 +272,85 @@ public:
         minimizer->SetMaxIterations(50000);
         minimizer->Minimize();
 
-        Double_t chi2 = minimizer->MinValue();
-        Int_t usedBins = 0;
-        auto countBins = [&](TH1* h) {
-            for (Int_t ib = 1; ib <= h->GetNbinsX(); ++ib) {
-                Double_t x   = h->GetBinCenter(ib);
-                Double_t err = h->GetBinError(ib);
-                if (err > 0 && x >= xlo && x <= xhi) ++usedBins;
-            }
-        };
         for (Int_t i = 0; i < nPar; ++i) {
+            func->SetParameter(i, minimizer->X()[i]);
             func->SetParError(i, TMath::Sqrt(minimizer->CovMatrix(i, i)));
         }
+        const Double_t chi2 = minimizer->MinValue();
         const Int_t nb = cm->observations().GetNrows();
         const Int_t ndf = std::max(1, nb - nPar); 
+        func->SetChisquare(chi2);
+        func->SetNDF(ndf);
+    }
+
+    inline void FitHistogramsByChi2(TH1* h1, TH1* h2, TF1* func, Int_t nG, covarianceMatrix* cm, const std::vector<TH1D*>& cmHists, const Double_t eigenThr, const Double_t nBins) {
+        const Int_t nPar = 6*nG +2;
+        const Int_t offA1 = 0;         // Amplitudes for h1
+        const Int_t offA2 = nG;        // Amplitudes for h2
+        const Int_t offM1 = 2*nG;      // means for h1
+        const Int_t offM2 = 3*nG;      // means for h
+        const Int_t offS1 = 4*nG;      // sigmas for h1
+        const Int_t offS2 = 5*nG;      // sigmas for
+        const Int_t offP1 = 6*nG;      // constant background for h1
+        const Int_t offP2 = 6*nG + 1;  // constant background for h2
+
+        auto chi2_fcn = [&](const Double_t* par0) {
+            std::vector<Double_t> par(par0, par0 + nPar);
+            for (Int_t j = 0; j < nG; ++j) {
+                const Double_t s1 = std::max(par[offS1 + j], 1e-12);
+                const Double_t s2 = std::max(par[offS2 + j], 1e-12);
+                par[offA2 + j] = par[offA1 + j] * (s1 / s2);
+            }
+            for (Int_t i = 0; i < nPar; ++i) func->SetParameter(i, par[i]);
+            TVectorD expected = BuildExpectedVector(h1, h2, cm, cmHists, par, nG, offA1, offA2, offM1, offM2, offS1, offS2, offP1, offP2, nBins);
+            const Double_t chi2_cov = Chi2_withCM(cm, expected);
+            return chi2_cov;
+        };
+
+        auto minimizer = std::unique_ptr<ROOT::Math::Minimizer>(ROOT::Math::Factory::CreateMinimizer("Minuit2",""));
+
+        ROOT::Math::Functor fcn(chi2_fcn, nPar);
+        minimizer->SetFunction(fcn);
+
+        for (Int_t i = 0; i < nPar; ++i) {
+            const char* name = func->GetParName(i);
+            Double_t    val  = func->GetParameter(i);
+            Double_t    err  = func->GetParError(i);
+            Double_t    step = (err>0?err:(fabs(val)*0.1+1e-3));
+            Double_t    lo, up;
+            func->GetParLimits(i, lo, up);
+            if (i >= offA2 && i < offA2 + nG) {
+                minimizer->SetFixedVariable(i, name, val);
+                continue;
+            }
+
+            if (up > lo) {
+                minimizer->SetLimitedVariable(i, name, val, step, lo, up);
+            } else {
+                minimizer->SetVariable(i, name, val, step);
+            }
+        }
+
+        minimizer->SetMaxFunctionCalls(50000);
+        minimizer->SetMaxIterations(50000);
+        minimizer->Minimize();
+
+        for (Int_t i = 0; i < nPar; ++i) {
+            func->SetParameter(i, minimizer->X()[i]);
+            func->SetParError(i, TMath::Sqrt(std::max(0.0, minimizer->CovMatrix(i, i))));
+        }
+
+        for (Int_t j = 0; j < nG; ++j) {
+            const double s1 = std::max(func->GetParameter(offS1 + j), 1e-12);
+            const double s2 = std::max(func->GetParameter(offS2 + j), 1e-12);
+            const double A2 = func->GetParameter(offA1 + j) * (s1 / s2);
+            func->SetParameter(offA2 + j, A2);
+            func->SetParError(offA2 + j, 0.0); 
+        }
+
+        const Double_t chi2 = minimizer->MinValue();
+        const Int_t nb = cm->observations().GetNrows();
+        const Int_t ndf = std::max(1, nb - nPar);
         func->SetChisquare(chi2);
         func->SetNDF(ndf);
     }
