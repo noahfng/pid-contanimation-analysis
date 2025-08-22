@@ -4,6 +4,8 @@
 #include <limits>
 #include <utility>
 #include <fstream>
+#include <string>
+#include <sstream>
 
 #include "TROOT.h"
 #include "TStyle.h"
@@ -65,8 +67,8 @@ struct ndJsonLogger {
         os << "]";
     }
 
-    static inline void indent(std::ostream& os, int n) {
-        for (int i = 0; i < n; ++i) os.put(' ');
+    static inline void indent(std::ostream& os, Int_t n) {
+        for (Int_t i = 0; i < n; ++i) os.put(' ');
     }
 
     static void dump_row_inline(std::ostream& os, const std::vector<Double_t>& v) {
@@ -80,8 +82,8 @@ struct ndJsonLogger {
 
     static void dump_mat(std::ostream& os,
                                 const std::vector<std::vector<Double_t>>& m,
-                                int indent_level = 0,
-                                int indent_width = 2) {
+                                Int_t indent_level = 0,
+                                Int_t indent_width = 2) {
         os << "[\n";
         for (size_t i = 0; i < m.size(); ++i) {
             indent(os, indent_level + indent_width);
@@ -174,28 +176,73 @@ struct ndJsonLogger {
     }
 };
 
+static inline Double_t getenv_double(const Char_t* k, Double_t fallback){
+  const Char_t* v = gSystem->Getenv(k);
+  if(!v || !*v) return fallback;
+  Char_t* end=nullptr;
+  Double_t x = strtod(v, &end);
+  return (end && *end==0) ? x : fallback;
+}
+
+static inline Int_t getenv_int(const Char_t* k, Int_t fallback){
+  const Char_t* v = gSystem->Getenv(k);
+  if(!v || !*v) return fallback;
+  Char_t* end=nullptr;
+  long x = strtol(v, &end, 10);
+  return (end && *end==0) ? (Int_t)x : fallback;
+}
+
+static inline Bool_t getenv_bool(const Char_t* k, Bool_t fallback) {
+  const Char_t* v = gSystem->Getenv(k);
+  if (!v) return fallback;
+
+  TString s(v);
+  s = s.Strip(TString::kBoth); 
+  s.ToLower();
+
+  if (s=="1" || s=="true"  || s=="yes" || s=="on")  return kTRUE;
+  if (s=="0" || s=="false" || s=="no"  || s=="off") return kFALSE;
+  return fallback; 
+}
+
+static inline std::vector<Double_t> getenv_vecd(const Char_t* k, std::vector<Double_t> fallback){
+  const Char_t* v = gSystem->Getenv(k);
+  if(!v || !*v) return fallback;
+  std::vector<Double_t> out;
+  std::stringstream ss(v);
+  std::string tok;
+  while(std::getline(ss, tok, ',')){
+    if(tok.empty()) continue;
+    Char_t* end=nullptr;
+    Double_t x = strtod(tok.c_str(), &end);
+    if(!(end && *end==0)) { out.clear(); return fallback; }
+    out.push_back(x);
+  }
+  return out.empty()? fallback : out;
+}
+
 void nSigma_Plot_ExclComp(){
     auto help = new helper();
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
     const Int_t   nBins   = 500;
-    const Double_t xMin   = -12.0, xMax = 8.0;
-    const Double_t pStart = 0.45, pEnd = 0.55, step = 0.1;
+    const Double_t xMin   = getenv_double("XMIN", -12.0), xMax = getenv_double("XMAX", 10.0);
+    const Double_t pStart = getenv_double("PSTART", 0.45), pEnd = getenv_double("PEND", 0.55), step = 0.1;
     const Double_t muWindow = 2.0;
     const Double_t mergeDistanceFactor = 1.0;
-    const Double_t nEntriesLimit = 5e7; 
-    const Bool_t FitKaonExclComp = true;
-    const Bool_t FitProtonExclComp = false;
+    const Double_t nEntriesLimit = 1e7; 
+    const Bool_t FitKaonExclComp = getenv_bool("FITKAONEXCLCOMP", true);
+    const Bool_t FitProtonExclComp = getenv_bool("FITPROTONEXCLCOMP", false);
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
     const Bool_t PeakZoom = false;
     const Bool_t manualPredictPeaks = true;
-    const Double_t eigenThr = 0;
-    const Bool_t useOffDiag = kFALSE;
-    const Bool_t plotCM = true;
+    const Double_t eigenThr = 0.0;
+    const Bool_t useOffDiag = false;
+    const Bool_t plotCM = false;
     const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}};
     using PeakPars = std::array<Double_t,4>;
-    const std::vector<Double_t> sigmaExclList = {3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    const std::vector<Double_t> sigmaExclList = {3.0, 4.0, 5.0, 6.0};
 
     gROOT->SetBatch(!manualPredictPeaks);
     gStyle->SetOptStat(1);
@@ -483,34 +530,23 @@ void nSigma_Plot_ExclComp(){
                     Int_t manualNGauss = 0;
                     std::vector<Double_t> manualMeans, manualSigmas, manualAmps;
                     if (manualPredictPeaks) {
-                        c->cd();
-                        c->Clear();
-                        h1->Draw("E1");
-                        c->Modified();
-                        c->Update();
-                        c->RaiseWindow();
-                        gSystem->ProcessEvents();
-                        std::cout << "How many Gaussians? ";
-                        std::cin >> manualNGauss;
-                        if (manualNGauss > 0) {
-                            manualMeans.resize(manualNGauss);
-                            std::cout << "Enter " << manualNGauss << " mean positions (space-separated): ";
-                            for (Int_t i = 0; i < manualNGauss; ++i) {
-                                std::cin >> manualMeans[i];
-                            }
-                            manualSigmas.resize(manualNGauss);
-                            std::cout << "Enter " << manualNGauss << " sigma (width) guesses for each peak (space-separated): ";
-                            for (Int_t i = 0; i < manualNGauss; ++i){
-                                std::cin >> manualSigmas[i];
-                            }
-                            manualAmps.resize(manualNGauss);
-                            std::cout << "Enter " << manualNGauss << " amplitude guesses for each peak (space-separated): ";
-                            for (Int_t i = 0; i < manualNGauss; ++i){
-                                std::cin >> manualAmps[i];
-                            }
+                        manualNGauss = getenv_int("MANUAL_NGAUSS", 4);
+                        auto defMeans  = std::vector<Double_t>{-6.0, -5.0, 0.0, 1.5};
+                        auto defSigmas = std::vector<Double_t>{ 1.0,  1.0, 1.0, 1.0};
+                        auto defAmps   = std::vector<Double_t>{ 4e5,  4e5, 1e4, 1e4};
+
+                        auto mMeans  = getenv_vecd("MANUAL_MEANS",  defMeans);
+                        auto mSigmas = getenv_vecd("MANUAL_SIGMAS", defSigmas);
+                        auto mAmps   = getenv_vecd("MANUAL_AMPS",   defAmps);
+
+                        Int_t L = std::min({manualNGauss, (Int_t)mMeans.size(), (Int_t)mSigmas.size(), (Int_t)mAmps.size()});
+                        if (L <= 0) {
+                          manualNGauss = 0;
                         } else {
-                            std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
-                            manualNGauss = 0;
+                          manualNGauss = L;
+                          manualMeans.assign (mMeans.begin(),  mMeans.begin()+L);
+                          manualSigmas.assign(mSigmas.begin(), mSigmas.begin()+L);
+                          manualAmps.assign  (mAmps.begin(),   mAmps.begin()+L);
                         }
                     }
 
@@ -533,9 +569,6 @@ void nSigma_Plot_ExclComp(){
                         }
                     }
                     if (nG < 1) { c->Print(pdfName); delete h1; continue; }
-                    
-                    Double_t fit_lo = x_low;
-                    Double_t fit_hi = x_high;
 
                     std::ostringstream form;
                     for (size_t i = 0; i < nG; ++i) {
@@ -546,7 +579,7 @@ void nSigma_Plot_ExclComp(){
                     form << "+pol0(" << 4*nG << ")"  // background h1
                         << "+pol0(" << 4*nG+1 << ")"; // background h2
 
-                    TF1* sum = new TF1("sum", form.str().c_str(), fit_lo, fit_hi);
+                    TF1* sum = new TF1("sum", form.str().c_str());
                     sum->SetNpx(500); 
                     const Int_t offA1 = 0;
                     const Int_t offA2 = nG;
@@ -595,7 +628,7 @@ void nSigma_Plot_ExclComp(){
                             sum->SetParameter(offS + i, p.sigma);
                         }
                     }
-                    help->FitHistogramsByChi2(h1, h2, sum, nG, fit_lo, fit_hi, cmObj[ref][i], std::vector<TH1D*>{hcm_no[ref][i], hcm_w[ref][i]}, eigenThr, nBins);
+                    help->FitHistogramsExclCompByChi2(h1, h2, sum, nG, cmObj[ref][i], std::vector<TH1D*>{hcm_no[ref][i], hcm_w[ref][i]}, eigenThr, nBins);
                     c->Clear();
                     h1->Draw("E1");
                     Double_t yMax1 = 1.25 * h1->GetMaximum();
@@ -712,8 +745,8 @@ void nSigma_Plot_ExclComp(){
                         return BandStats{kLeft, kRight, std::move(frac), std::move(totCont), std::move(totContErr)}; 
                     };
 
-                    auto [D1,N1] = help->PoissonDeviance(h1, 0, par, nG, offA1, offA2, offM, offS, offP1, offP2);
-                    auto [D2,N2] = help->PoissonDeviance(h2, 1, par, nG, offA1, offA2, offM, offS, offP1, offP2);
+                    auto [D1,N1] = help->PoissonDeviance(h1, 0, par, nG, offA1, offA2, offM, offM, offS, offS, offP1, offP2);
+                    auto [D2,N2] = help->PoissonDeviance(h2, 1, par, nG, offA1, offA2, offM, offM, offS, offS, offP1, offP2);
                     const Double_t D  = D1 + D2;
                     const Double_t N  = N1 + N2;
                     const Int_t    k  = 4*nG + 2; 
@@ -752,7 +785,7 @@ void nSigma_Plot_ExclComp(){
                     std::vector<Double_t> e_fitMeans(nG), e_fitSigmas(nG);
                     std::vector<Double_t> e_fitAmps_noExcl(nG), e_fitAmps_wExcl(nG);
 
-                    for (int ig=0; ig<nG; ++ig) {
+                    for (Int_t ig=0; ig<nG; ++ig) {
                         fitAmps_noExcl[ig] = par[offA1 + ig];
                         fitAmps_wExcl[ig]  = par[offA2 + ig];
                         fitMeans[ig]       = par[offM  + ig];
@@ -794,22 +827,24 @@ void nSigma_Plot_ExclComp(){
                         bkg_noExcl, bkg_wExcl, ebkg_noExcl, ebkg_wExcl);
 
                     const Int_t nPoints = 500; 
-                    Double_t xlo = fit_lo, xhi = fit_hi;
-                    Double_t dx  = (xhi - xlo)/(nPoints-1);
+                    Double_t dx  = (x_high - x_low)/(nPoints-1);
                     std::vector<Double_t> xv(nPoints), y1(nPoints), y2(nPoints);
 
+                    const double bw1 = h1->GetXaxis()->GetBinWidth(1);
+                    const double bw2 = h2->GetXaxis()->GetBinWidth(1);
+
                     for(Int_t ip=0; ip<nPoints; ++ip) {
-                        Double_t x = xlo + ip*dx;
+                        Double_t x = x_low + ip*dx;
                         xv[ip] = x;
-                        Double_t yy1 = par[offP1];
-                        Double_t yy2 = par[offP2];
+                        Double_t yy1 = par[offP1] * bw1;
+                        Double_t yy2 = par[offP2] * bw2;
                         for(Int_t ig=0; ig<nG; ++ig) {
                             Double_t A1  = par[offA1 + ig];
                             Double_t A2  = par[offA2 + ig];
                             Double_t mu  = par[offM  + ig];
                             Double_t sig = par[offS  + ig];
-                            yy1 += A1 * TMath::Gaus(x, mu, sig, kFALSE);
-                            yy2 += A2 * TMath::Gaus(x, mu, sig, kFALSE);
+                            yy1 += A1 * TMath::Gaus(x, mu, sig, kFALSE) * bw1;
+                            yy2 += A2 * TMath::Gaus(x, mu, sig, kFALSE) * bw2;
                         }
                         y1[ip] = yy1;
                         y2[ip] = yy2;
@@ -846,7 +881,7 @@ void nSigma_Plot_ExclComp(){
                         if (sum->GetParameter(offA1 + i) < 0) continue;
                         TF1 *g1 = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
                         g1->SetParameters(
-                            sum->GetParameter(offA1 + i),
+                            sum->GetParameter(offA1 + i) * bw1,
                             sum->GetParameter(offM + i),
                             sum->GetParameter(offS + i)
                         );
@@ -916,7 +951,7 @@ void nSigma_Plot_ExclComp(){
                         if (sum->GetParameter(offA2 + i) < 0) continue;
                         TF1 *g2 = new TF1(Form("g_%d_%d", ref, i), "gaus", x_low, x_high);
                         g2->SetParameters(
-                            sum->GetParameter(offA2 + i),
+                            sum->GetParameter(offA2 + i) * bw2,
                             sum->GetParameter(offM + i),
                             sum->GetParameter(offS + i)
                         );
