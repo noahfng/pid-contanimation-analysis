@@ -119,8 +119,8 @@ class covarianceMatrix
         mFitLims.push_back(fitlims[h]);
         
         // update mnBins, mFitBinLims, and mBinsInLims
-        auto bmin = hists[h]->GetXaxis()->FindBin(std::get<0>(*(fitlims[h])));
-        auto bmax = hists[h]->GetXaxis()->FindBin(std::get<1>(*(fitlims[h])));
+        auto bmin = std::max(1, hists[h]->GetXaxis()->FindBin(std::get<0>(*(fitlims[h]))));
+        auto bmax = std::min(hists[h]->GetNbinsX(), hists[h]->GetXaxis()->FindBin(std::get<1>(*(fitlims[h]))));
         mnBins.push_back(bmax - bmin + 1);
         mFitBinLims.push_back(std::make_tuple(bmin, bmax));
         

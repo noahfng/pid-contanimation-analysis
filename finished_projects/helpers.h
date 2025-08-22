@@ -247,26 +247,6 @@ public:
             for (Int_t i = 0; i < nPar; ++i) func->SetParameter(i, par[i]);
             TVectorD expected = BuildExpectedVector(cm, cmHists, par, nG, offA1, offA2, offM, offS, offP1, offP2, xlo, xhi, nBins);
             const Double_t chi2_cov = Chi2_withCM(cm, expected);
-            // -------------------- old chi2 calculation --------------------
-            //auto calc = [&](TH1* h, Int_t offA, Int_t offP) {
-            //    Double_t chi2 = 0; 
-            //    for (Int_t ib = 1; ib <= h->GetNbinsX(); ++ib) {
-            //        Double_t x   = h->GetBinCenter(ib);
-            //        Double_t y   = h->GetBinContent(ib);
-            //        Double_t err = h->GetBinError(ib);
-            //        if (err <= 0 || x < xlo || x > xhi) continue;
-            //        Double_t yfit = par[offP];
-            //        for (Int_t ig = 0; ig < nG; ++ig) {
-            //            Double_t A  = par[offA + ig];
-            //            Double_t mu = par[offM + ig];
-            //            Double_t s = par[offS + ig];
-            //            yfit += A * TMath::Gaus(x, mu, s, kFALSE);
-            //        }
-            //        chi2 += (y - yfit) * (y - yfit) / (err * err);
-            //    }
-            //    return chi2;
-            //};
-            // return calc(h1, offA1, offP1) + calc(h2, offA2, offP2);
             return chi2_cov;
         };
 
