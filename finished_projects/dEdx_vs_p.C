@@ -1,5 +1,5 @@
 #include "TChain.h"  
-#include "TH2F.h"      
+#include "TH2D.h"      
 #include "TGraph.h"    
 #include "TCanvas.h"    
 #include "TLegend.h"   
@@ -46,7 +46,7 @@ void dEdx_vs_p() {
 
     const Double_t step = (pMax - pMin) / nPoints;
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
-    TH2F *hist = new TH2F("dedx_vs_p1",
+    TH2D *hist = new TH2D("dedx_vs_p1",
                           "TPC dE/dx vs p;p [GeV/c];dE/dx [arb.u.]",
                           250, pMin, pMax,
                           100,   0, 120);

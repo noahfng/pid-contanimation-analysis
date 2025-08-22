@@ -6,7 +6,7 @@
 #include "TMath.h"        
 #include "TChain.h"      
 #include "TCanvas.h"     
-#include "TH2F.h"         
+#include "TH2D.h"         
 #include "TLegend.h"      
 #include "TGraph.h"       
 #include "TString.h" 
@@ -62,16 +62,16 @@ void nSigma_vs_p_Plot() {
     }
 
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
-    TH2F* histTPC[nParts];
-    TH2F* histTOF[nParts];
+    TH2D* histTPC[nParts];
+    TH2D* histTOF[nParts];
     for (Int_t i = 0; i < nParts; ++i) {
         if(!doPid[i]) continue;
-        histTPC[i] = new TH2F(
+        histTPC[i] = new TH2D(
           Form("tpc_%s", help->pNames[i]),
           Form("n#sigma_{%s} vs p (TPC);p [GeV/c];n#sigma_{%s}", help->pCodes[i], help->pCodes[i]),
           1000, pMin, pMax, 1000, yMin, yMax
         );
-        histTOF[i] = new TH2F(
+        histTOF[i] = new TH2D(
           Form("tof_%s", help->pNames[i]),
           Form("n#sigma_{%s} vs p (TOF);p [GeV/c];n#sigma_{%s}", help->pCodes[i], help->pCodes[i]),
           1000, pMin, pMax, 1000, yMin, yMax

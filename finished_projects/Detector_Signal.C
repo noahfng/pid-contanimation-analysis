@@ -1,6 +1,6 @@
 #include "TChain.h"
 #include "TCanvas.h"
-#include "TH1F.h"
+#include "TH1D.h"
 #include "TLegend.h"
 #include "TLine.h"
 #include "TMath.h"
@@ -45,7 +45,7 @@ void Detector_Signal() {
 
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesMax));
 
-    std::vector<TH1F*> hTPCs, hTOFs;
+    std::vector<TH1D*> hTPCs, hTOFs;
     if (plotTPC) hTPCs.reserve(nSteps);
     if (plotTOF) hTOFs.reserve(nSteps);
 
@@ -55,7 +55,7 @@ void Detector_Signal() {
         Double_t high = low + step;
         if (plotTPC) {
             hTPCs.push_back(
-              new TH1F(Form("hTPC_%.1f_%.1f", low, high),
+              new TH1D(Form("hTPC_%.1f_%.1f", low, high),
                        Form("TPC signal; TPC Signal ; Entries"),
                        nBins, xMin, xMax)
             );
@@ -66,7 +66,7 @@ void Detector_Signal() {
         }
         if (plotTOF) {
             hTOFs.push_back(
-              new TH1F(Form("hTOF_%.1f_%.1f", low, high),
+              new TH1D(Form("hTOF_%.1f_%.1f", low, high),
                        Form("TOF signal; TOF Signal ; Entries"),
                        nBins, xMin, xMax)
             );

@@ -5,7 +5,7 @@
 #include "TMath.h"
 #include "TChain.h"
 #include "TCanvas.h"
-#include "TH1F.h"
+#include "TH1D.h"
 #include "TString.h"
 
 #include <AddTrees.h>
@@ -37,17 +37,17 @@ void nSigma_Plot_dx() {
     }
 
 
-    TH1F* hRes[nParts];
-    TH1F* hDeriv[nParts];
+    TH1D* hRes[nParts];
+    TH1D* hDeriv[nParts];
     for (Int_t h = 0; h < nParts; ++h) {
 
-        hRes[h] = new TH1F(
+        hRes[h] = new TH1D(
             Form("res_%s", help->pCodes[h]),
             Form("n#sigma_{%s} for %.2f<p<%.2f; n#sigma; Counts",
                  help->pCodes[h], pMin, pMax),
             nBins, xMin, xMax
         );
-        hDeriv[h] = (TH1F*)hRes[h]->Clone(Form("deriv_%s", help->pCodes[h]));
+        hDeriv[h] = (TH1D*)hRes[h]->Clone(Form("deriv_%s", help->pCodes[h]));
         hDeriv[h]->SetTitle(
             Form("d/dx n#sigma_{%s} for %.2f<p<%.2f; n#sigma; dN/dx",
                  help->pCodes[h], pMin, pMax)

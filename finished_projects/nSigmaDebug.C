@@ -8,7 +8,7 @@
 #include "TMath.h"
 #include "TChain.h"
 #include "TCanvas.h"
-#include "TH1F.h"
+#include "TH1D.h"
 #include "TLegend.h"
 #include "TF1.h"  
 #include "TLine.h"
@@ -71,7 +71,7 @@ void nSigmaDebug(){
             pEdges[i] = pMin + i * step;
         }
         TString suffix = isTPCmode ? "TPC" : "TOF";
-        std::vector<std::vector<TH1F*>> hists(nParts, std::vector<TH1F*>(nSteps,nullptr));
+        std::vector<std::vector<TH1D*>> hists(nParts, std::vector<TH1D*>(nSteps,nullptr));
         for (int pid = 0; pid < nParts; ++pid) {
             if (!doPid[pid]) continue; 
             for (int i = 0; i < nSteps; ++i) {
@@ -79,7 +79,7 @@ void nSigmaDebug(){
                         help->pNames[pid], pEdges[i], pEdges[i+1], suffix.Data());
                 TString name2 = Form("n#sigma_{%s} %g < p < %g GeV/c (%s); n#sigma_{%s}; Counts",
                         help->pNames[pid], pEdges[i], pEdges[i+1], suffix.Data(), help->pNames[pid]);
-                hists[pid][i] = new TH1F(name1, name2, nBins, xMin, xMax);
+                hists[pid][i] = new TH1D(name1, name2, nBins, xMin, xMax);
                 hists[pid][i]->Sumw2(true);
                 hists[pid][i]->SetMarkerStyle(kFullCircle);
                 hists[pid][i]->SetMarkerSize(0.75);
@@ -117,7 +117,7 @@ void nSigmaDebug(){
             c->SetLogy();
             c->Print(pdfName + "[");
             for (int i = 0; i < nSteps; ++i) {
-                TH1F* h = hists[ref][i];
+                TH1D* h = hists[ref][i];
 
                 struct Peak {Double_t A, mu, sigma; Int_t id; std::vector<Int_t> merged_ids;Bool_t alwaysSeparate = false;};
                 std::vector<Peak> seeds;
