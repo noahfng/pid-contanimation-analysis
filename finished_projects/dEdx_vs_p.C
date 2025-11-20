@@ -16,12 +16,12 @@ void dEdx_vs_p() {
     gStyle->SetPalette(kRainBow);
 
     // basic config    
-    const Double_t nEntriesLimit = 1e7;
+    const Double_t nEntriesLimit = 1e10;
     const Int_t nPoints = 500;
-    const Bool_t KaExclusion = false; // TOF-based Kaon veto
+    const Bool_t KaExclusion = true; // TOF-based Kaon veto
     const Bool_t PrExclusion = true; // TOF-based Proton veto
-    const Bool_t tofFilter = false; // require TOF info
-    const Double_t pMin = 0.3, pMax = 5.0; // GeV/c range for axes/curves
+    const Bool_t tofFilter = true; // require TOF info
+    const Double_t pMin = 0.3, pMax = 10.0; // GeV/c range for axes/curves
     
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
@@ -52,10 +52,7 @@ void dEdx_vs_p() {
     // histogram
     const Double_t step = (pMax - pMin) / nPoints;
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
-    TH2D *hist = new TH2D("dedx_vs_p1",
-                          "TPC dE/dx vs p;p [GeV/c];dE/dx [arb.u.]",
-                          250, pMin, pMax,
-                          100,   0, 120);
+    TH2D *hist = new TH2D("dedx_vs_p1", "TPC dE/dx vs p;p [GeV/c];dE/dx [arb.u.]", 1000, pMin, pMax, 1000, 0, 120);
     
     // event/track loop
     for (Long64_t i = 0; i < nEntries; ++i) {
