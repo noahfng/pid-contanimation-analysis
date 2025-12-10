@@ -22,13 +22,13 @@ void Invariant_Mass_Plot() {
     // basic config  
     const Bool_t applyTPCnSigmaFilter = false; // TPC PID gate
     const Float_t nSigmaTPC = 3.0; 
-    const Bool_t applyTOFEventfilter = false; // require TOF info
-    const Bool_t applyTOFnSigmaFilter = false; // TOF PID gate
+    const Bool_t applyTOFEventfilter = true; // require TOF info
+    const Bool_t applyTOFnSigmaFilter = true; // TOF PID gate
     const Bool_t applyNorm = false; // normalize histograms by entries
     const Float_t nSigmaTOF = 3.0;
 
     const Double_t nEntriesLimit = 1e10;
-    const Int_t   nPtBins = 1000;
+    const Int_t   nPtBins = 300;
     const Float_t ptMax   = 10.0;
 
     const Int_t nParts = helper::nParts;
@@ -159,29 +159,43 @@ void Invariant_Mass_Plot() {
     c->Print("InvariantMass.pdf[");      
 
     // expected particle markers (GeV/c^2)
-    const Double_t mRho   = 0.763;  
-    const Double_t mKstar = 0.890;  
+    const Double_t mRho   = 0.775;  
+    const Double_t mKstar = 0.892;  
     const Double_t mJpsi  = 3.0969; 
+    const Double_t mPhi = 1.0195;
+    const Double_t mPsi2S = 3.6861;
     
     TLine* l1= new TLine(mRho, 0, mRho, 1);
-    l1->SetLineColor(kBlue);
-    l1->SetLineStyle(2);
+    l1->SetLineColor(kBlack);
+    l1->SetLineStyle(7);
     l1->SetLineWidth(2);
     
     TLine* l2= new TLine(mKstar, 0, mKstar, 1);
     l2->SetLineColor(kGreen+2);
-    l2->SetLineStyle(2);
+    l2->SetLineStyle(7);
     l2->SetLineWidth(2);
     
     TLine* l3 = new TLine(mJpsi, 0, mJpsi, 1);
     l3->SetLineColor(kRed);
-    l3->SetLineStyle(2);
+    l3->SetLineStyle(7);
     l3->SetLineWidth(2);
 
-    TLegend* leg = new TLegend(0.8, 0.65, 0.88, 0.75);
+    TLine* l4 = new TLine(mPhi, 0, mPhi, 1);
+    l4->SetLineColor(kOrange+7);
+    l4->SetLineStyle(7);
+    l4->SetLineWidth(2);
+
+    TLine* l5 = new TLine(mPsi2S, 0, mPsi2S, 1);
+    l5->SetLineColor(kViolet);
+    l5->SetLineStyle(7);
+    l5->SetLineWidth(2);
+
+    TLegend* leg = new TLegend(0.8, 0.6, 0.88, 0.75);
     leg->AddEntry(l1, "#rho(770)", "l");   
     leg->AddEntry(l2, "K*(892)", "l");
     leg->AddEntry(l3, "J/#psi", "l");
+    leg->AddEntry(l4, "#varphi(1020)", "l");
+    leg->AddEntry(l5, "#psi(2s)", "l");
     leg->SetBorderSize(0);
     leg->SetTextSize(0.03);
 
@@ -192,10 +206,14 @@ void Invariant_Mass_Plot() {
         l1->SetY2(y2);
         l2->SetY2(y2);
         l3->SetY2(y2);
+        l4->SetY2(y2);
+        l5->SetY2(y2);
         hM[i]->Draw("HIST");
         l1->Draw("SAME");
         l2->Draw("SAME");
         l3->Draw("SAME");
+        l4->Draw("SAME");
+        l5->Draw("SAME");
         leg->Draw("SAME");
         c->Print("InvariantMass.pdf");
     }
