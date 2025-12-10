@@ -14,13 +14,14 @@
 void dEdx_vs_p() {
     auto help = new helper();
     gStyle->SetPalette(kRainBow);
+    gStyle->SetNumberContours(256);
 
     // basic config    
     const Double_t nEntriesLimit = 1e10;
     const Int_t nPoints = 500;
-    const Bool_t KaExclusion = true; // TOF-based Kaon veto
-    const Bool_t PrExclusion = true; // TOF-based Proton veto
-    const Bool_t tofFilter = true; // require TOF info
+    const Bool_t KaExclusion = false; // TOF-based Kaon veto
+    const Bool_t PrExclusion = false; // TOF-based Proton veto
+    const Bool_t tofFilter = false; // require TOF info
     const Double_t pMin = 0.3, pMax = 10.0; // GeV/c range for axes/curves
     
     const Int_t nParts = helper::nParts;
@@ -52,7 +53,7 @@ void dEdx_vs_p() {
     // histogram
     const Double_t step = (pMax - pMin) / nPoints;
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
-    TH2D *hist = new TH2D("dedx_vs_p1", "TPC dE/dx vs p;p [GeV/c];dE/dx [arb.u.]", 1000, pMin, pMax, 1000, 0, 120);
+    TH2D *hist = new TH2D("dedx_vs_p1", "TPC Energy Loss vs Momentum (Bethe-Bloch Bands);p [GeV/c];dE/dx [arb.u.]", 1000, pMin, pMax, 1000, 0, 120);
     
     // event/track loop
     for (Long64_t i = 0; i < nEntries; ++i) {
@@ -80,14 +81,13 @@ void dEdx_vs_p() {
     hist->Draw("COLZ");
 
     // overlay Bethe–Bloch bands
-    TLegend *leg = new TLegend(0, 0.10, 0.15, 0.30);
-    leg->SetBorderSize(0); 
-    leg->SetFillStyle(0);
+    TLegend *leg = new TLegend(0.86, 0.70, 0.90, 0.90);
+    leg->SetBorderSize(1); 
+    leg->SetMargin(0.45);
+    leg->SetFillColorAlpha(kWhite, 0.8);
 
     for (Int_t i = 0; i < nParts; ++i) {
         TGraph *g = new TGraph();
-        g->SetLineColor(help->colors[i]);
-        g->SetLineWidth(2);
         Int_t idx=0;
         for (Int_t j = 0; j <= nPoints; ++j) {
             Double_t pG = pMin + j*step; // GeV/c
@@ -96,8 +96,12 @@ void dEdx_vs_p() {
             if (d<0 || TMath::IsNaN(d)) continue;
             g->SetPoint(idx++, pG, d);
         }
+
+        g->SetLineColor(help->colors[i]);   
+        g->SetLineWidth(2);
         g->Draw("L SAME");
-        leg->AddEntry(g, help->pNames[i], "l");
+
+        leg->AddEntry(g, help->pCodes[i], "l");
     }
     leg->Draw();
 
