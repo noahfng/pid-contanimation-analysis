@@ -20,14 +20,15 @@ void nSigma_vs_p_Plot() {
     gROOT->SetBatch(kTRUE);
     gStyle->SetOptStat(0);
     gStyle->SetPalette(kRainBow);
+    gStyle->SetNumberContours(256);
 
     // basic config
-    const Bool_t plotTPC = false; // draw TPC nσ vs p
-    const Bool_t plotTOF = true; // draw TOF nσ vs p
+    const Bool_t plotTPC = true; // draw TPC nσ vs p
+    const Bool_t plotTOF = true; // draw TOF nσ vs p, for cleaner plots set pMin to 0.3 GeV/c
     const Bool_t KaExclusion = false; // TOF-based Kaon veto
     const Bool_t PrExclusion = false; // TOF-based Proton veto
-    const Bool_t tofFilter = false; // require TOF info
-    const Double_t nEntriesLimit = 1e7;
+    const Bool_t requireTOF = (KaExclusion || PrExclusion); // automatically require TOF info if any TOF-based veto is used
+    const Double_t nEntriesLimit = 1e10;
     const Int_t npoints = 500;
     const Double_t yMin   = -20.0, yMax = 30.0;
     const Double_t pMin = 0.1, pMax = 10.0;
@@ -35,7 +36,7 @@ void nSigma_vs_p_Plot() {
     const Int_t nParts = helper::nParts;
     auto NtrkMax = help->NtrkMax;
     // choose which PID reference species to plot data for (e, μ, π, K, p)
-    const std::array<Bool_t, nParts> doPid = {{false, false, false, true, false}}; 
+    const std::array<Bool_t, nParts> doPid = {{true, true, true, true, true}}; 
 
     // input data chain
     TChain chain("twotauchain");
@@ -96,7 +97,7 @@ void nSigma_vs_p_Plot() {
                 continue;
             if (PrExclusion && !TMath::IsNaN(tofNS[4][tr]) && TMath::Abs(tofNS[4][tr]) < 3.0) 
                 continue;
-            if (tofFilter && tofExpMom[tr]< 0)
+            if (requireTOF && tofExpMom[tr]< 0)
                 continue;
             for (Int_t sp = 0; sp < nParts; ++sp) if(doPid[sp]) {
                 if(plotTPC) histTPC[sp]->Fill(p, tpcNS[sp][tr]);
@@ -147,9 +148,10 @@ void nSigma_vs_p_Plot() {
 
     // Draw (one PDF per detector)
     TCanvas* c = new TCanvas("c", "", 800, 600);
-    TLegend* leg = new TLegend(0, 0.10, 0.15, 0.30);
-    leg->SetBorderSize(0);
-    leg->SetFillStyle(0);
+    TLegend *leg = new TLegend(0.86, 0.70, 0.90, 0.90);
+    leg->SetBorderSize(1); 
+    leg->SetMargin(0.45);
+    leg->SetFillColorAlpha(kWhite, 0.8);
     const Char_t* pdfTPC = "nsigma_vs_p_tpc.pdf";
     const Char_t* pdfTOF = "nsigma_vs_p_tof.pdf";
     if (plotTPC) c->Print(Form("%s[", pdfTPC));
