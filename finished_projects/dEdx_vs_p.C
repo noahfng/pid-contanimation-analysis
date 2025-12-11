@@ -17,12 +17,12 @@ void dEdx_vs_p() {
     gStyle->SetNumberContours(256);
 
     // basic config    
-    const Double_t nEntriesLimit = 1e7;
+    const Double_t nEntriesLimit = 1e10;
     const Int_t nPoints = 500;
     const Bool_t KaExclusion = false; // TOF-based Kaon veto
     const Bool_t PrExclusion = false; // TOF-based Proton veto
     const Bool_t requireTOF = (KaExclusion || PrExclusion); // automatically require TOF info if any TOF-based veto is used
-    const Double_t pMin = 0.3, pMax = 10.0; // GeV/c range for axes/curves
+    const Double_t pMin = 0.1, pMax = 10.0; // GeV/c range for axes/curves
     
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
@@ -53,7 +53,8 @@ void dEdx_vs_p() {
     // histogram
     const Double_t step = (pMax - pMin) / nPoints;
     Long64_t nEntries = std::min(chain.GetEntries(), static_cast<Long64_t>(nEntriesLimit));
-    TH2D *hist = new TH2D("dedx_vs_p1", "TPC Energy Loss vs Momentum (Bethe-Bloch Bands);p [GeV/c];dE/dx [arb.u.]", 1000, pMin, pMax, 1000, 0, 120);
+    TH2D *hist = new TH2D("dedx_vs_p1", "TPC Energy Loss vs Momentum (Bethe-Bloch Bands);p [GeV/c];dE/dx [arb.u.]", 1000, pMin, pMax, 1000, 20, 120);
+    hist->GetXaxis()->SetTitleOffset(1.3);
     
     // event/track loop
     for (Long64_t i = 0; i < nEntries; ++i) {
@@ -74,14 +75,16 @@ void dEdx_vs_p() {
 
     // draw heatmap
     TCanvas* c = new TCanvas("c","dE/dx vs p (tracks)",800,600); 
+    c->SetRightMargin(0.12);
     c->SetLogz(); 
     c->SetLogx();
     c->SetGrid();
+
     hist->SetStats(false);
     hist->Draw("COLZ");
 
     // overlay Bethe–Bloch bands
-    TLegend *leg = new TLegend(0.86, 0.70, 0.90, 0.90);
+    TLegend *leg = new TLegend(0.84, 0.70, 0.88, 0.90);
     leg->SetBorderSize(1); 
     leg->SetMargin(0.45);
     leg->SetFillColorAlpha(kWhite, 0.8);
