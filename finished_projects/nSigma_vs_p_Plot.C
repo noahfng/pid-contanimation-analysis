@@ -24,7 +24,7 @@ void nSigma_vs_p_Plot() {
 
     // basic config
     const Bool_t plotTPC = true; // draw TPC nσ vs p
-    const Bool_t plotTOF = true; // draw TOF nσ vs p, for cleaner plots set pMin to 0.3 GeV/c
+    const Bool_t plotTOF = false; // draw TOF nσ vs p, for cleaner plots set pMin to 0.3 GeV/c
     const Bool_t KaExclusion = false; // TOF-based Kaon veto
     const Bool_t PrExclusion = false; // TOF-based Proton veto
     const Bool_t requireTOF = (KaExclusion || PrExclusion); // automatically require TOF info if any TOF-based veto is used
@@ -80,11 +80,13 @@ void nSigma_vs_p_Plot() {
           Form("n#sigma_{%s} vs p (TPC);p [GeV/c];n#sigma_{%s}", help->pCodes[i], help->pCodes[i]),
           1000, pMin, pMax, 1000, yMin, yMax
         );
+        histTPC[i]->GetXaxis()->SetTitleOffset(1.3);
         histTOF[i] = new TH2D(
           Form("tof_%s", help->pNames[i]),
           Form("n#sigma_{%s} vs p (TOF);p [GeV/c];n#sigma_{%s}", help->pCodes[i], help->pCodes[i]),
           1000, pMin, pMax, 1000, yMin, yMax
         );
+        histTOF[i]->GetXaxis()->SetTitleOffset(1.3);
     }
     
     // fill histograms
@@ -156,6 +158,7 @@ void nSigma_vs_p_Plot() {
     const Char_t* pdfTOF = "nsigma_vs_p_tof.pdf";
     if (plotTPC) c->Print(Form("%s[", pdfTPC));
     if (plotTOF) c->Print(Form("%s[", pdfTOF));
+    c->SetRightMargin(0.12);
     c->SetLogz();
     c->SetLogx();
 
