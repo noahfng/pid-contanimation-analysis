@@ -17,22 +17,21 @@
 void Invariant_Mass_Plot() {
     auto help = new helper();
     gROOT->SetBatch(kTRUE); 
-    gStyle->SetOptStat(1);
+    gStyle->SetOptStat(0);
 
-    // basic config  
-    const Bool_t applyTPCnSigmaFilter = false; // TPC PID gate
-    const Float_t nSigmaTPC = 3.0; 
-    const Bool_t applyTOFEventfilter = true; // require TOF info
-    const Bool_t applyTOFnSigmaFilter = true; // TOF PID gate
-    const Bool_t applyNorm = false; // normalize histograms by entries
-    const Float_t nSigmaTOF = 3.0;
-
+    // basic config
     const Double_t nEntriesLimit = 1e10;
     const Int_t   nPtBins = 300;
+    const Float_t  ptMin   = 0.0;
     const Float_t ptMax   = 10.0;
 
     const Int_t nParts = helper::nParts;
     const Int_t NtrkMax = help->NtrkMax;
+    
+    const Bool_t KaExclusion = false;     // TOF-based Kaon veto
+    const Bool_t PrExclusion = false;     // TOF-based Proton veto
+    const Bool_t requireTOF  = (KaExclusion || PrExclusion);
+    const Float_t nSigmaTOF = 3.0;        // TOF nσ cut for veto
 
     // input data chain
     TChain chain("twotauchain");
@@ -74,21 +73,34 @@ void Invariant_Mass_Plot() {
     for (Int_t i = 0; i < 6; ++i) {
         hM[i] = new TH1D(Form("Invariant mass %s", names[i]),
                          Form("Invariant mass %s;M (GeV/#it{c}^{2});Entries", names[i]),
-                         nPtBins, 0.0, ptMax);
+                         nPtBins, ptMin, ptMax);
+        hM[i]->SetMarkerStyle(kFullCircle);
+        hM[i]->SetMarkerSize(0.5);
+        hM[i]->SetMarkerColor(colors[i]);
         hM[i]->SetLineColor(colors[i]);
-        hM[i]->SetLineWidth(2);
     }
     
     for (Long64_t i = 0; i < nEntries; ++i) {
         chain.GetEntry(i);
 
-        // require valid TOF momentum for both tracks
-        if(applyTOFEventfilter && (tofExpMom[0] < 0.0 || tofExpMom[1] < 0.0)) continue; 
+        if (requireTOF) {
+            if (tofExpMom[0] < 0 || tofExpMom[1] < 0)
+                continue;  // TOF missing → reject only when needed
+
+            // Kaon veto (index 3 in helpers)
+            if (KaExclusion) {
+                if (!TMath::IsNaN(tofNS[3][0]) && TMath::Abs(tofNS[3][0]) < nSigmaTOF) continue;
+                if (!TMath::IsNaN(tofNS[3][1]) && TMath::Abs(tofNS[3][1]) < nSigmaTOF) continue;
+            }
+
+            // Proton veto (index 4 in helpers) 
+            if (PrExclusion) {
+                if (!TMath::IsNaN(tofNS[4][0]) && TMath::Abs(tofNS[4][0]) < nSigmaTOF) continue;
+                if (!TMath::IsNaN(tofNS[4][1]) && TMath::Abs(tofNS[4][1]) < nSigmaTOF) continue;
+            }
+        }
 
         for (Int_t j = 0; j < 5; ++j) {
-            // PID gates per track
-            if (applyTPCnSigmaFilter && (TMath::Abs(tpcNS[j][0]) > nSigmaTPC || TMath::Abs(tpcNS[j][1]) > nSigmaTPC))  continue;
-            if (applyTOFnSigmaFilter && (TMath::Abs(tofNS[j][0]) > nSigmaTOF || TMath::Abs(tofNS[j][1]) > nSigmaTOF)) continue;
 
             // build energies using track momenta (GeV) and species mass (convert MeV->GeV)
             Float_t p1 = TMath::Sqrt(px[0]*px[0] + py[0]*py[0] + pz[0]*pz[0]);
@@ -106,51 +118,25 @@ void Invariant_Mass_Plot() {
             if (M2 > 0) {
                 hM[j]->Fill(std::sqrt(M2));}
         }
+        // mixed Kπ case
+        {
+            Int_t i1 = 2; // π
+            Int_t i2 = 3; // K
 
-        // mixed Kπ hypothesis: decide assignment from PID (π-K vs K-π)
-        Bool_t piK = true, Kpi = true;
-        if (applyTPCnSigmaFilter) {
-            piK &= (TMath::Abs(tpcNS[2][0]) < nSigmaTPC && TMath::Abs(tpcNS[3][1]) < nSigmaTPC);
-            Kpi &= (TMath::Abs(tpcNS[3][0]) < nSigmaTPC && TMath::Abs(tpcNS[2][1]) < nSigmaTPC);
-        }
-        
-        if (applyTOFnSigmaFilter) {
-            piK &= (TMath::Abs(tofNS[2][0]) < nSigmaTOF && TMath::Abs(tofNS[3][1]) < nSigmaTOF);
-            Kpi &= (TMath::Abs(tofNS[3][0]) < nSigmaTOF && TMath::Abs(tofNS[2][1]) < nSigmaTOF);
-        }
-        
-        // if both or neither pass, skip (ambiguous assignment)
-        if ((applyTPCnSigmaFilter || applyTOFnSigmaFilter) && (piK == Kpi)) continue;
+            TLorentzVector tl1, tl2;
+            Double_t p1 = std::sqrt(px[0]*px[0] + py[0]*py[0] + pz[0]*pz[0]);
+            Double_t p2 = std::sqrt(px[1]*px[1] + py[1]*py[1] + pz[1]*pz[1]);
+            Double_t m1 = help->pMasses[i1]/1e3;
+            Double_t m2 = help->pMasses[i2]/1e3;
+            Double_t e1 = std::sqrt(p1*p1 + m1*m1);
+            Double_t e2 = std::sqrt(p2*p2 + m2*m2);
 
-        // pick mass assignment
-        Int_t i1 = 2; // π
-        Int_t i2 = 3; // K
-        if (Kpi) {
-            i1 = 3; 
-            i2 = 2;
-        }
-
-        // four-vectors for mixed hypothesis (masses in GeV)
-        TLorentzVector tl1, tl2;
-        Double_t p1 = std::sqrt(px[0]*px[0] + py[0]*py[0] + pz[0]*pz[0]);
-        Double_t p2 = std::sqrt(px[1]*px[1] + py[1]*py[1] + pz[1]*pz[1]);
-        Double_t m1 = help->pMasses[i1]/1e3;
-        Double_t m2 = help->pMasses[i2]/1e3;
-        Double_t e1 = std::sqrt(p1*p1 + m1*m1);
-        Double_t e2 = std::sqrt(p2*p2 + m2*m2);
-
-        tl1.SetPxPyPzE(px[0], py[0], pz[0], e1);
-        tl2.SetPxPyPzE(px[1], py[1], pz[1], e2);
-        TLorentzVector tlSum = tl1 + tl2;
-        Double_t ivm = tlSum.M();
-        if(ivm > 0) hM[5]->Fill(ivm);
-    }
-
-    // optional per-hist normalization by entries
-    if (applyNorm){
-        for (Int_t ih = 0; ih < 6; ++ih) {
-            Double_t integ = hM[ih]->GetEntries();
-            if (integ > 0) hM[ih]->Scale(1.0/integ);
+            tl1.SetPxPyPzE(px[0], py[0], pz[0], e1);
+            tl2.SetPxPyPzE(px[1], py[1], pz[1], e2);
+            TLorentzVector tlSum = tl1 + tl2;
+            Double_t ivm = tlSum.M();
+            if (ivm > 0)
+                hM[5]->Fill(ivm);
         }
     }
     
@@ -164,57 +150,81 @@ void Invariant_Mass_Plot() {
     const Double_t mJpsi  = 3.0969; 
     const Double_t mPhi = 1.0195;
     const Double_t mPsi2S = 3.6861;
-    
-    TLine* l1= new TLine(mRho, 0, mRho, 1);
-    l1->SetLineColor(kBlack);
-    l1->SetLineStyle(7);
-    l1->SetLineWidth(2);
-    
-    TLine* l2= new TLine(mKstar, 0, mKstar, 1);
-    l2->SetLineColor(kGreen+2);
-    l2->SetLineStyle(7);
-    l2->SetLineWidth(2);
-    
-    TLine* l3 = new TLine(mJpsi, 0, mJpsi, 1);
-    l3->SetLineColor(kRed);
-    l3->SetLineStyle(7);
-    l3->SetLineWidth(2);
 
-    TLine* l4 = new TLine(mPhi, 0, mPhi, 1);
-    l4->SetLineColor(kOrange+7);
-    l4->SetLineStyle(7);
-    l4->SetLineWidth(2);
+    TLine* lRho   = new TLine(mRho,   0, mRho,   1);
+    TLine* lKstar = new TLine(mKstar, 0, mKstar, 1);
+    TLine* lJpsi  = new TLine(mJpsi,  0, mJpsi,  1);
+    TLine* lPhi   = new TLine(mPhi,   0, mPhi,   1);
+    TLine* lPsi2S = new TLine(mPsi2S, 0, mPsi2S, 1);
 
-    TLine* l5 = new TLine(mPsi2S, 0, mPsi2S, 1);
-    l5->SetLineColor(kViolet);
-    l5->SetLineStyle(7);
-    l5->SetLineWidth(2);
+    auto setupLine = [](TLine* l, Color_t col) {
+        l->SetLineColor(col);
+        l->SetLineStyle(7);
+        l->SetLineWidth(2);
+    };
 
-    TLegend* leg = new TLegend(0.8, 0.6, 0.88, 0.75);
-    leg->AddEntry(l1, "#rho(770)", "l");   
-    leg->AddEntry(l2, "K*(892)", "l");
-    leg->AddEntry(l3, "J/#psi", "l");
-    leg->AddEntry(l4, "#varphi(1020)", "l");
-    leg->AddEntry(l5, "#psi(2s)", "l");
-    leg->SetBorderSize(0);
-    leg->SetTextSize(0.03);
+    setupLine(lRho,   kBlack);
+    setupLine(lKstar, kGreen+2);
+    setupLine(lJpsi,  kRed);
+    setupLine(lPhi,   kOrange+7);
+    setupLine(lPsi2S, kViolet);
+    
+    TLegend* leg_lep = new TLegend(0.82, 0.79, 0.90, 0.89);
+    leg_lep->AddEntry(lJpsi,  "J/#psi",    "l");
+    leg_lep->AddEntry(lPsi2S, "#psi(2S)",  "l");
+    leg_lep->SetBorderSize(0);
+    leg_lep->SetFillStyle(0);
+    leg_lep->SetTextSize(0.03);
+
+    TLegend* leg_rho = new TLegend(0.80, 0.79, 0.88, 0.89);
+    leg_rho->AddEntry(lRho, "#rho^{0}(770)", "l");
+    leg_rho->SetBorderSize(0);
+    leg_rho->SetFillStyle(0);
+    leg_rho->SetTextSize(0.03);
+
+    TLegend* leg_phi = new TLegend(0.80, 0.79, 0.88, 0.89);
+    leg_phi->AddEntry(lPhi, "#varphi(1020)", "l");
+    leg_phi->SetBorderSize(0);
+    leg_phi->SetFillStyle(0);
+    leg_phi->SetTextSize(0.03);
+
+    TLegend* leg_kstar = new TLegend(0.80, 0.79, 0.88, 0.89);
+    leg_kstar->AddEntry(lKstar, "K*(892)", "l");
+    leg_kstar->SetFillStyle(0);
+    leg_kstar->SetBorderSize(0);
+    leg_kstar->SetTextSize(0.03);
+    
 
     for (Int_t i = 0; i < 6; ++i) {
         c->Clear();
         c->SetLogy();
-        Double_t y2 = hM[i]->GetMaximum()*1.65;  // extend marker lines to current ymax
-        l1->SetY2(y2);
-        l2->SetY2(y2);
-        l3->SetY2(y2);
-        l4->SetY2(y2);
-        l5->SetY2(y2);
-        hM[i]->Draw("HIST");
-        l1->Draw("SAME");
-        l2->Draw("SAME");
-        l3->Draw("SAME");
-        l4->Draw("SAME");
-        l5->Draw("SAME");
-        leg->Draw("SAME");
+
+        Double_t y2 = hM[i]->GetMaximum()*1.65;
+        lRho  ->SetY2(y2);
+        lKstar->SetY2(y2);
+        lJpsi ->SetY2(y2);
+        lPhi  ->SetY2(y2);
+        lPsi2S->SetY2(y2);
+
+        hM[i]->Draw("E1");
+
+        if (i == 0 || i == 1) {           // e+e- or mu+mu-
+            lJpsi ->Draw("SAME");
+            lPsi2S->Draw("SAME");
+            leg_lep->Draw("SAME");
+        } else if (i == 2) {              // pi+pi-
+            lRho->Draw("SAME");
+            leg_rho->Draw("SAME");
+        } else if (i == 3) {              // K+K-
+            lPhi->Draw("SAME");
+            leg_phi->Draw("SAME");
+        } else if (i == 4) {              // p+p- : no clear VM marker in this range
+            // nothing extra
+        } else if (i == 5) {              // K pi : K*
+            lKstar->Draw("SAME");
+            leg_kstar->Draw("SAME");
+        }
+
         c->Print("InvariantMass.pdf");
     }
 
