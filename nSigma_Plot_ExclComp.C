@@ -236,7 +236,6 @@ static inline std::vector<TString> getenv_labels(const Char_t* k, const std::vec
   return out.empty() ? fallback : out;
 }
 
-
 void nSigma_Plot_ExclComp(){
     auto help = new helper();
     const Int_t nParts = helper::nParts;
@@ -650,9 +649,6 @@ void nSigma_Plot_ExclComp(){
                     c->Clear();
                     h1->Draw("E1");
                     Double_t yMax1 = 1.25 * h1->GetMaximum();
-                    TLegend *leg1 = new TLegend(0.82, 0.75, 0.90, 0.90);
-                    leg1->SetBorderSize(1); 
-                    leg1->SetFillColorAlpha(kWhite, 0.8);
                     std::vector<Double_t> par(sum->GetNpar());
                     std::vector<Double_t> err(sum->GetNpar());
                     for(Int_t i=0; i<sum->GetNpar(); ++i)  {
@@ -892,6 +888,11 @@ void nSigma_Plot_ExclComp(){
                     //        l->Draw();
                     //    }
                     //}
+
+                    TLegend *leg1 = new TLegend(0.84, 0.70, 0.90, 0.90);
+                    leg1->SetBorderSize(1); 
+                    leg1->SetMargin(0.45);
+                    leg1->SetFillColorAlpha(kWhite, 0.8);
                         
                     for (Int_t i = 0; i < nG; ++i) {
                         if (sum->GetParameter(offA1 + i) < 0) continue;
@@ -930,11 +931,11 @@ void nSigma_Plot_ExclComp(){
                         }
                         leg1->AddEntry(g1, label, "l");
                     }
+                    leg1->Draw();
                     //TPaveText *pt1=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
                     //pt1->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
                     //pt1->SetFillColorAlpha(0,0); 
                     //pt1->Draw("same");
-                    leg1->Draw();
                     c->Print(pdfName);
                     delete leg1;
                     //delete pt1;
@@ -942,9 +943,6 @@ void nSigma_Plot_ExclComp(){
                     c->Clear();
                     h2->Draw("E1");
                     gSum2->Draw("L SAME");
-                    TLegend *leg2 = new TLegend(0.82, 0.75, 0.90, 0.90);
-                    leg2->SetBorderSize(1); 
-                    leg2->SetFillColorAlpha(kWhite, 0.8);
                     Double_t yMax2 = 1.25 * h2->GetMaximum();
                     //if (!manualPredictPeaks) {
                     //    for (const auto &pk : merged) {
@@ -963,6 +961,11 @@ void nSigma_Plot_ExclComp(){
                     //        l->Draw();
                     //    }
                     //}
+
+                    TLegend *leg2 = new TLegend(0.84, 0.70, 0.90, 0.90);
+                    leg2->SetBorderSize(1); 
+                    leg2->SetMargin(0.45);
+                    leg2->SetFillColorAlpha(kWhite, 0.8);
 
                     for (Int_t i = 0; i < nG; ++i) {
                         if (sum->GetParameter(offA2 + i) < 0) continue;
@@ -1000,12 +1003,12 @@ void nSigma_Plot_ExclComp(){
                             else label = Form("Peak %d", i+1);
                         }
                         leg2->AddEntry(g2, label, "l");
-                    } 
+                    }      
+                    leg2->Draw();   
                     //TPaveText *pt2=new TPaveText(0.02,0.90,0.15,0.99,"NDC");
                     //pt2->AddText(Form("#chi^{2}/NDF = %.2f", sum->GetChisquare()/sum->GetNDF()));
                     //pt2->SetFillColorAlpha(0,0); 
                     //pt2->Draw("same");
-                    leg2->Draw();
                     c->Print(pdfName);
                     //delete pt2;
                     delete leg2;
