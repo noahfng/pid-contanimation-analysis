@@ -10,7 +10,8 @@
 #include "TLegend.h"      
 #include "TGraph.h"       
 #include "TString.h" 
-#include "TFile.h"    
+#include "TFile.h"  
+#include "TPaletteAxis.h"  
 
 #include <AddTrees.h>   // project-specific: file discovery/chain fill
 #include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
@@ -24,7 +25,7 @@ void nSigma_vs_p_Plot() {
 
     // basic config
     const Bool_t plotTPC = true; // draw TPC nσ vs p
-    const Bool_t plotTOF = false; // draw TOF nσ vs p, for cleaner plots set pMin to 0.3 GeV/c
+    const Bool_t plotTOF = true; // draw TOF nσ vs p, for cleaner plots set pMin to 0.3 GeV/c
     const Bool_t KaExclusion = false; // TOF-based Kaon veto
     const Bool_t PrExclusion = false; // TOF-based Proton veto
     const Bool_t requireTOF = (KaExclusion || PrExclusion); // automatically require TOF info if any TOF-based veto is used
@@ -142,7 +143,7 @@ void nSigma_vs_p_Plot() {
 
     // Draw (one PDF per detector)
     TCanvas* c = new TCanvas("c", "", 800, 600);
-    TLegend *leg = new TLegend(0.84, 0.70, 0.88, 0.90);
+    TLegend *leg = new TLegend(0.80, 0.70, 0.84, 0.90);
     leg->SetBorderSize(1); 
     leg->SetMargin(0.45);
     leg->SetFillColorAlpha(kWhite, 0.8);
@@ -150,7 +151,7 @@ void nSigma_vs_p_Plot() {
     const Char_t* pdfTOF = "nsigma_vs_p_tof.pdf";
     if (plotTPC) c->Print(Form("%s[", pdfTPC));
     if (plotTOF) c->Print(Form("%s[", pdfTOF));
-    c->SetRightMargin(0.12);
+    c->SetRightMargin(0.16);
     c->SetLogz();
     c->SetLogx();
 
@@ -161,6 +162,12 @@ void nSigma_vs_p_Plot() {
             leg->Clear();
             for (Int_t hyp = 0; hyp < 5; ++hyp) leg->AddEntry(tpcCurves[i][hyp], help->pCodes[hyp], "l");
             histTPC[i]->Draw("COLZ");
+            gPad->Update();
+            auto palette = (TPaletteAxis*)gPad->GetPrimitive("palette");
+            if (palette) {
+                palette->SetTitle("Track density");
+                palette->SetTitleOffset(1.2);
+            }
             for (Int_t hyp = 0; hyp < 5; ++hyp) tpcCurves[i][hyp]->Draw("L SAME");
             leg->Draw();
             c->Print(pdfTPC);
@@ -169,6 +176,12 @@ void nSigma_vs_p_Plot() {
             leg->Clear();
             for (Int_t hyp = 0; hyp < 5; ++hyp) leg->AddEntry(tofCurves[i][hyp], help->pCodes[hyp], "l");
             histTOF[i]->Draw("COLZ");
+            gPad->Update();
+            auto palette = (TPaletteAxis*)gPad->GetPrimitive("palette");
+            if (palette) {
+                palette->SetTitle("Track density");
+                palette->SetTitleOffset(1.2);
+            }
             for (Int_t hyp = 0; hyp < 5; ++hyp) tofCurves[i][hyp]->Draw("L SAME");
             leg->Draw();
             c->Print(pdfTOF);
