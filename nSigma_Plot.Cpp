@@ -96,6 +96,7 @@ void nSigma_Plot(){
     const Double_t muWindow = 2.0; // ±window for μ during fit init
     const Double_t mergeDistanceFactor = 1.0; // merge seeds if |Δμ| < f·max(σ)
     const Double_t nEntriesLimit = 1e10;
+    const Bool_t mergeMuPiSeeds = false; // if separate μ and π seeds are found, merge into a single "μ/π" seed (with both IDs in merged_ids)
 
     // event/track filters
     const Bool_t TOFfilter = false; // require TOF info
@@ -105,7 +106,7 @@ void nSigma_Plot(){
     // what to draw
     const Bool_t plotTPC = true;
     const Bool_t plotTOF = false;
-    const Bool_t drawPredictedLines = true; // vertical lines at predicted peak positions (from model, not fit)
+    const Bool_t drawPredictedLines = false; // vertical lines at predicted peak positions (from model, not fit)
     const Bool_t drawSum = true; // overlay sum of Gaussians fit result
     const Bool_t drawComponents = true; // overlay individual Gaussian components from fit 
 
@@ -251,40 +252,41 @@ void nSigma_Plot(){
                 }
 
                 // optionally merge μ and π seeds into a single seed (keeps IDs in merged_ids)
-                Peak muPiCombined{0,0,0,-1,{},false};
-                Bool_t sawMu = false, sawPi = false;
-                for (auto it = seeds.begin(); it != seeds.end();) {
-                    if (it->id == 1 || it->id == 2) {
-                        if (!sawMu && it->id == 1) {
-                            muPiCombined = *it;
-                            sawMu = true;
+                if (mergeMuPiSeeds) {
+                    Peak muPiCombined{0,0,0,-1,{},false};
+                    Bool_t sawMu = false, sawPi = false;
+                    for (auto it = seeds.begin(); it != seeds.end();) {
+                        if (it->id == 1 || it->id == 2) {
+                            if (!sawMu && it->id == 1) {
+                                muPiCombined = *it;
+                                sawMu = true;
+                            }
+                            else {
+                                // merge by conserving integral and mean/variance
+                                Double_t I_old = muPiCombined.A * muPiCombined.sigma * TMath::Sqrt(2*TMath::Pi());
+                                Double_t I_new = it->A * it->sigma * TMath::Sqrt(2*TMath::Pi());
+                                Double_t I_tot = I_old + I_new;
+                                Double_t mu_eff = (I_old*muPiCombined.mu + I_new*it->mu) / I_tot;
+                                Double_t var_eff = (I_old*(muPiCombined.sigma*muPiCombined.sigma + (muPiCombined.mu-mu_eff)*(muPiCombined.mu-mu_eff)) + I_new*(it->sigma*it->sigma + (it->mu-mu_eff)*(it->mu-mu_eff))) / I_tot;
+                                muPiCombined.A     = I_tot / (muPiCombined.sigma * TMath::Sqrt(2*TMath::Pi()));
+                                muPiCombined.mu    = mu_eff;
+                                muPiCombined.sigma = TMath::Sqrt(var_eff);
+                            }
+                            muPiCombined.merged_ids.push_back(it->id);
+                            sawPi = sawPi || (it->id == 2);
+                            it = seeds.erase(it);
                         }
                         else {
-                            // merge by conserving integral and mean/variance
-                            Double_t I_old = muPiCombined.A * muPiCombined.sigma * TMath::Sqrt(2*TMath::Pi());
-                            Double_t I_new = it->A * it->sigma * TMath::Sqrt(2*TMath::Pi());
-                            Double_t I_tot = I_old + I_new;
-                            Double_t mu_eff = (I_old*muPiCombined.mu + I_new*it->mu) / I_tot;
-                            Double_t var_eff = (I_old*(muPiCombined.sigma*muPiCombined.sigma + (muPiCombined.mu-mu_eff)*(muPiCombined.mu-mu_eff)) + I_new*(it->sigma*it->sigma + (it->mu-mu_eff)*(it->mu-mu_eff))) / I_tot;
-                            muPiCombined.A     = I_tot / (muPiCombined.sigma * TMath::Sqrt(2*TMath::Pi()));
-                            muPiCombined.mu    = mu_eff;
-                            muPiCombined.sigma = TMath::Sqrt(var_eff);
+                            ++it;
                         }
-                        muPiCombined.merged_ids.push_back(it->id);
-                        sawPi = sawPi || (it->id == 2);
-                        it = seeds.erase(it);
                     }
-                    else {
-                        ++it;
+                    if (sawMu || sawPi) {
+                        muPiCombined.id = 1; // // tag as "μ/π"
+                        // never merge away the reference species peak
+                        muPiCombined.alwaysSeparate = std::find(muPiCombined.merged_ids.begin(), muPiCombined.merged_ids.end(), ref) != muPiCombined.merged_ids.end();
+                        seeds.push_back(muPiCombined);
                     }
                 }
-                if (sawMu || sawPi) {
-                    muPiCombined.id = 1; // // tag as "μ/π"
-                    // never merge away the reference species peak
-                    muPiCombined.alwaysSeparate = std::find(muPiCombined.merged_ids.begin(), muPiCombined.merged_ids.end(), ref) != muPiCombined.merged_ids.end();
-                    seeds.push_back(muPiCombined);
-                }
-
                 for (auto &s : seeds) {
                     if (std::find(s.merged_ids.begin(), s.merged_ids.end(), ref) != s.merged_ids.end()) {
                         s.alwaysSeparate = true;
