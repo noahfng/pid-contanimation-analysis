@@ -20,67 +20,6 @@
 #include <AddTrees.h>   // project-specific: file discovery/chain fill
 #include <helpers.h>    // project-specific: masses, charges, colors, Bethe–Bloch
 
-static Int_t PidToken(TString tok)
-{
-  tok.ReplaceAll(" ", "");
-  tok.ToLower();
-
-  if (tok=="e"  || tok=="el" || tok=="electron") return 0;
-  if (tok=="mu" || tok=="#mu" || tok=="muon")    return 1;
-  if (tok=="pi" || tok=="#pi" || tok=="pion")    return 2;
-  if (tok=="k"  || tok=="#k"  || tok=="ka" || tok=="kaon") return 3;
-  if (tok=="p"  || tok=="pr"  || tok=="proton") return 4;
-
-  return -1;
-}
-
-static std::vector<Int_t> PidsFromLabel(TString lab)
-{
-  lab.ReplaceAll(" ", "");
-  lab.ToLower();
-  lab.ReplaceAll(",", "+");
-
-  std::vector<Int_t> out;
-
-  // split by '+'
-  std::unique_ptr<TObjArray> parts(lab.Tokenize("+"));
-  for (Int_t i = 0; i < parts->GetEntriesFast(); ++i) {
-    TString tok = ((TObjString*)parts->At(i))->GetString();
-    Int_t pid = PidToken(tok);
-    if (pid >= 0) out.push_back(pid);
-  }
-
-  // unique
-  std::sort(out.begin(), out.end());
-  out.erase(std::unique(out.begin(), out.end()), out.end());
-  return out;
-}
-
-static TString LegendFromPids(const std::vector<Int_t>& pids, const helper* help)
-{
-  if (pids.empty()) return "";
-
-  // optional: force mu then pi first if both present (nice convention)
-  std::vector<Int_t> ordered = pids;
-  const Bool_t hasMu = std::find(ordered.begin(), ordered.end(), 1) != ordered.end();
-  const Bool_t hasPi = std::find(ordered.begin(), ordered.end(), 2) != ordered.end();
-
-  if (hasMu && hasPi) {
-    // build: mu + pi + (rest)
-    std::vector<Int_t> rest;
-    for (auto pid : ordered) if (pid != 1 && pid != 2) rest.push_back(pid);
-
-    TString s = Form("%s + %s", help->pCodes[1], help->pCodes[2]);
-    for (auto pid : rest) s += TString::Format(" + %s", help->pCodes[pid]);
-    return s;
-  }
-
-  // default: join everything
-  TString s = help->pCodes[ordered[0]];
-  for (size_t i = 1; i < ordered.size(); ++i) s += TString::Format(" + %s", help->pCodes[ordered[i]]);
-  return s;
-}
-
 void nSigma_Plot(){
     auto help = new helper();
     const Int_t nParts = helper::nParts;
@@ -353,7 +292,7 @@ void nSigma_Plot(){
                         for (Int_t i=0;i<manualNGauss;++i) {
                             std::cout << "  label[" << i << "]: ";
                             std::cin >> manualLabels[i];
-                            manualPids[i] = PidsFromLabel(manualLabels[i]);
+                            manualPids[i] = help->PidsFromLabel(manualLabels[i]);
                         }
                     } else {
                         std::cerr << "Invalid number of Gaussians; falling back to automatic mode." << std::endl;
@@ -511,7 +450,7 @@ void nSigma_Plot(){
                                 if (hasMu && hasPi) col = help->colors[1];
                                 else col = help->colors[manualPids[ig][0]];
 
-                                label = LegendFromPids(manualPids[ig], help);
+                                label = help->LegendFromPids(manualPids[ig], help);
                             } else if (ig < (Int_t)manualLabels.size() && manualLabels[ig].Length()) {
                                 label = manualLabels[ig];
                             }
@@ -571,7 +510,7 @@ void nSigma_Plot(){
                     } else {
                         TString raw = ((Int_t)manualLabels.size() > ig) ? manualLabels[ig] : "";
 
-                        auto pids = PidsFromLabel(raw);
+                        auto pids = help->PidsFromLabel(raw);
 
                         const Bool_t hasMu = (std::find(pids.begin(), pids.end(), 1) != pids.end());
                         const Bool_t hasPi = (std::find(pids.begin(), pids.end(), 2) != pids.end());
@@ -582,7 +521,7 @@ void nSigma_Plot(){
                         else if (!pids.empty()) colorPid = pids[0]; 
 
                         col = (colorPid >= 0) ? help->colors[colorPid] : kGray+2;
-                        label = !pids.empty() ? LegendFromPids(pids, help) : (raw.Length() ? raw : Form("Peak %d", ig+1));
+                        label = !pids.empty() ? help->LegendFromPids(pids, help) : (raw.Length() ? raw : Form("Peak %d", ig+1));
                         g->SetLineColor(col);
                     }
                     g->SetLineStyle(2);

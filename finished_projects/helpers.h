@@ -86,6 +86,52 @@ public:
         return val;
     };
 
+    std::vector<Int_t> PidsFromLabel(TString lab){
+        lab.ReplaceAll(" ", "");
+        lab.ToLower();
+        lab.ReplaceAll(",", "+");
+
+        std::vector<Int_t> out;
+
+        // split by '+'
+        std::unique_ptr<TObjArray> parts(lab.Tokenize("+"));
+        for (Int_t i = 0; i < parts->GetEntriesFast(); ++i) {
+            TString tok = ((TObjString*)parts->At(i))->GetString();
+            Int_t pid = PidToken(tok);
+            if (pid >= 0) out.push_back(pid);
+        }
+
+        // unique
+        std::sort(out.begin(), out.end());
+        out.erase(std::unique(out.begin(), out.end()), out.end());
+        return out;
+    }
+
+     TString LegendFromPids(const std::vector<Int_t>& pids, const helper* help){
+        if (pids.empty()) return "";
+
+        // optional: force mu then pi first if both present (nice convention)
+        std::vector<Int_t> ordered = pids;
+        const Bool_t hasMu = std::find(ordered.begin(), ordered.end(), 1) != ordered.end();
+        const Bool_t hasPi = std::find(ordered.begin(), ordered.end(), 2) != ordered.end();
+
+        if (hasMu && hasPi) {
+            // build: mu + pi + (rest)
+            std::vector<Int_t> rest;
+            for (auto pid : ordered) if (pid != 1 && pid != 2) rest.push_back(pid);
+
+            TString s = Form("%s + %s", help->pCodes[1], help->pCodes[2]);
+            for (auto pid : rest) s += TString::Format(" + %s", help->pCodes[pid]);
+            return s;
+        }
+
+        // default: join everything
+        TString s = help->pCodes[ordered[0]];
+        for (size_t i = 1; i < ordered.size(); ++i) s += TString::Format(" + %s", help->pCodes[ordered[i]]);
+        return s;
+    }
+
+
     // Gaussian integral between a and b
     Double_t GaussIntegral(Double_t A, Double_t mu, Double_t sig, Double_t a, Double_t b) {
         const Double_t invsqrt2 = 1.0 / TMath::Sqrt(2.0);
@@ -380,10 +426,23 @@ public:
     }
 private:
     // ALEPH parameterization; input γβ, returns normalized dE/dx shape
-    Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5) {
+    Double_t bethe_bloch_aleph(Double_t bg, Double_t p1, Double_t p2, Double_t p3, Double_t p4, Double_t p5){
         Double_t beta = bg / TMath::Sqrt(1.0 + bg*bg);
         Double_t aa   = TMath::Power(beta, p4);
         Double_t bb   = TMath::Log(p3 + TMath::Power(1.0/bg, p5));
         return (p2 - aa - bb) * p1 / aa;
+    }
+
+    Int_t PidToken(TString tok){
+        tok.ReplaceAll(" ", "");
+        tok.ToLower();
+
+        if (tok=="e"  || tok=="el" || tok=="electron") return 0;
+        if (tok=="mu" || tok=="#mu" || tok=="muon")    return 1;
+        if (tok=="pi" || tok=="#pi" || tok=="pion")    return 2;
+        if (tok=="k"  || tok=="#k"  || tok=="ka" || tok=="kaon") return 3;
+        if (tok=="p"  || tok=="pr"  || tok=="proton") return 4;
+
+        return -1;
     };
 };
