@@ -6,6 +6,7 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <iomanip>
 
 #include "TGraph.h"
 #include "TROOT.h"
@@ -140,6 +141,44 @@ static std::string species_table_to_txt(const std::vector<TString>& labels, cons
     return os.str();
 }
 
+struct WindowScanEntry {
+    Double_t nsigma;
+    std::vector<std::vector<Double_t>> frac;     
+    std::vector<Double_t> purity;                 
+    std::vector<Double_t> contamination;        
+    std::vector<Double_t> efficiency;             
+};
+using WindowScan = std::vector<WindowScanEntry>;
+
+static std::string scan_table_to_txt(const std::vector<TString>& labels, const WindowScan& scan)
+{
+    std::ostringstream os;
+
+    for (const auto& entry : scan) {
+        os << "nSigmaWindow = " << entry.nsigma << "\n";
+        os << std::left
+           << std::setw(14) << "species"
+           << std::setw(16) << "purity"
+           << std::setw(16) << "contamination"
+           << std::setw(16) << "efficiency"
+           << "\n";
+        os << std::string(14 + 16 + 16 + 16, '-') << "\n";
+
+        for (size_t i = 0; i < labels.size(); ++i) {
+            TString lab = (i < labels.size()) ? labels[i] : Form("peak_%zu", i);
+            os << std::left
+               << std::setw(14) << lab.Data()
+               << std::setw(16) << entry.purity[i]
+               << std::setw(16) << entry.contamination[i]
+               << std::setw(16) << entry.efficiency[i]
+               << "\n";
+        }
+        os << "\n";
+    }
+
+    return os.str();
+}
+
 static inline Double_t getenv_double(const Char_t* k, Double_t fallback){
   const Char_t* v = gSystem->Getenv(k);
   if(!v || !*v) return fallback;
@@ -220,7 +259,7 @@ void nSigma_Plot_ExclComp(){
     // histogram & slicing 
     const Int_t nBins = 500;
     const Double_t xMin = getenv_double("XMIN", -10.0), xMax = getenv_double("XMAX", 10.0);
-    const Double_t pStart = getenv_double("PSTART", 0.45), pEnd = getenv_double("PEND", 0.55), step = 0.1; // momentum slicing (GeV/c)
+    const Double_t pStart = getenv_double("PSTART", 0.35), pEnd = getenv_double("PEND", 0.45), step = 0.1; // momentum slicing (GeV/c)
 
     // peak finding & fitting config
     const Double_t muWindow = 2.0; // ±window for μ during fit init
@@ -234,7 +273,7 @@ void nSigma_Plot_ExclComp(){
     const Bool_t plotTOF = false;
 
     // drawing options
-    const Bool_t drawPredictedLines = true; // vertical lines at predicted peak positions
+    const Bool_t drawPredictedLines = false; // vertical lines at predicted peak positions
     const Bool_t drawSum = true; // overlay total fit
     const Bool_t drawComponents = true; // overlay individual Gaussian components
 
@@ -249,6 +288,9 @@ void nSigma_Plot_ExclComp(){
     const Double_t eigenThr = 0.0;
     const Bool_t useOffDiag = false;
     const Bool_t plotCM = false;
+
+    // contanimation analysis
+    std::vector<double> sigmaScan = {0.5, 1.0, 1.5, 2.0, 3.0}; // width of the area around the peak to analyze for contamination (in units of fitted σ)
 
     // PID selection: which particle species to run the analysis for (in order: e, π, K, p, d)
     const std::array<Bool_t, nParts> doPid = {{true, false, false, false, false}};
@@ -295,13 +337,13 @@ void nSigma_Plot_ExclComp(){
     }
     
     auto drawNSigma = [&](Bool_t isTPCmode, Double_t sigmaExcl) {
-        const Double_t pMin   = isTPCmode ? pStart : std::max(pStart, 0.4);
-        const Int_t    nSteps = Int_t(std::floor((pEnd - pMin) / step + 0.5));
+        const Double_t pMin = isTPCmode ? pStart : std::max(pStart, 0.4);
+        const Int_t nSteps = Int_t(std::floor((pEnd - pMin) / step + 0.5));
         std::vector<Double_t> pEdges(nSteps+1);
         for (Int_t i = 0; i <= nSteps; ++i) pEdges[i] = pMin + i * step;
         TString suffix = isTPCmode ? "TPC" : "TOF";    
         enum ExclType{KaonExcl = 3, ProtExcl = 4};
-        std::vector<std::pair<ExclType, Bool_t>> modes = {{KaonExcl,  FitKaonExclComp}, {ProtExcl,  FitProtonExclComp}};
+        std::vector<std::pair<ExclType, Bool_t>> modes = {{KaonExcl, FitKaonExclComp}, {ProtExcl, FitProtonExclComp}};
         for (auto [excl, doThis]: modes) {
             if(!doThis) continue;
             const Char_t* name = (excl==KaonExcl ? "KaonExcl" : "ProtonExcl");
@@ -329,14 +371,13 @@ void nSigma_Plot_ExclComp(){
                     h_w[pid][i]->SetMarkerColor(kBlack);
                     h_w[pid][i]->SetLineColor(kBlack);
 
-                    
                     auto name_cm_no = Form("cm_nSTPC_%s_%g_%g_no%s", help->pCodes[pid], pEdges[i], pEdges[i+1], name);
                     auto name_cm_w  = Form("cm_nSTPC_%s_%g_%g_%s%.2f", help->pCodes[pid], pEdges[i], pEdges[i+1], name, sigmaExcl);
 
                     hcm_no[pid][i] = new TH1D(name_cm_no, h_no[pid][i]->GetTitle(), nBins, xMin, xMax);
                     hcm_w [pid][i] = new TH1D(name_cm_w , h_w [pid][i]->GetTitle(), nBins, xMin, xMax);
 
-                    std::vector<TH1D*> cmHists{ hcm_no[pid][i], hcm_w[pid][i] };
+                    std::vector<TH1D*> cmHists{hcm_no[pid][i], hcm_w[pid][i] };
                     std::vector<std::tuple<Double_t, Double_t>*> fitlims;
                     fitlims.push_back(new std::tuple<Double_t,Double_t>(xMin, xMax));   
                     fitlims.push_back(new std::tuple<Double_t,Double_t>(xMin, xMax)); 
@@ -349,8 +390,7 @@ void nSigma_Plot_ExclComp(){
                 for (Int_t t = 0; t < NtrkMax; ++t) {
                     Double_t pG = inner[t];
                     if (tofExpMom[t] < 0) continue;
-                    Int_t bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG)
-                            - pEdges.begin() - 1;
+                    Int_t bin = std::lower_bound(pEdges.begin(), pEdges.end(), pG) - pEdges.begin() - 1;
                     if (bin<0 || bin>=nSteps) continue;
 
                     for (Int_t pid=0; pid<nParts; ++pid) if (doPid[pid]) {
@@ -379,7 +419,6 @@ void nSigma_Plot_ExclComp(){
                             nsVals->push_back(-999.0); 
                             toadd->push_back(false);
                         }
-
                         cmObj[pid][bin]->addEvent(nsVals, toadd);
                     }
                 }
@@ -459,7 +498,7 @@ void nSigma_Plot_ExclComp(){
 
                         if (mu < xMin || mu > xMax) continue;
 
-                        Int_t    bin = h1->FindBin(mu);        
+                        Int_t bin = h1->FindBin(mu);        
                         Double_t amp = h1->GetBinContent(bin);
 
                         seeds.push_back({amp, mu, sigma0, hyp, {hyp}, false});
@@ -477,15 +516,10 @@ void nSigma_Plot_ExclComp(){
                                 Double_t I_old = muPiCombined.A * muPiCombined.sigma * TMath::Sqrt(2*TMath::Pi());
                                 Double_t I_new = it->A * it->sigma * TMath::Sqrt(2*TMath::Pi());
                                 Double_t I_tot = I_old + I_new;
-                                Double_t mu_eff = (I_old*muPiCombined.mu + I_new*it->mu) / I_tot;
-                                Double_t var_eff = (
-                                    I_old*(muPiCombined.sigma*muPiCombined.sigma 
-                                        + (muPiCombined.mu-mu_eff)*(muPiCombined.mu-mu_eff))
-                                + I_new*(it->sigma*it->sigma 
-                                        + (it->mu-mu_eff)*(it->mu-mu_eff))
-                                ) / I_tot;
-                                muPiCombined.A     = I_tot / (muPiCombined.sigma * TMath::Sqrt(2*TMath::Pi()));
-                                muPiCombined.mu    = mu_eff;
+                                Double_t mu_eff = (I_old * muPiCombined.mu + I_new * it->mu) / I_tot;
+                                Double_t var_eff = (I_old * (muPiCombined.sigma*muPiCombined.sigma + (muPiCombined.mu-mu_eff)*(muPiCombined.mu-mu_eff)) + I_new *(it->sigma*it->sigma + (it->mu-mu_eff)*(it->mu-mu_eff))) / I_tot;
+                                muPiCombined.A = I_tot / (muPiCombined.sigma * TMath::Sqrt(2*TMath::Pi()));
+                                muPiCombined.mu = mu_eff;
                                 muPiCombined.sigma = TMath::Sqrt(var_eff);
                             }
                             muPiCombined.merged_ids.push_back(it->id);
@@ -517,10 +551,8 @@ void nSigma_Plot_ExclComp(){
                             Double_t I1 = p.A * p.sigma * TMath::Sqrt(2*TMath::Pi());
                             Double_t I2 = s.A * s.sigma * TMath::Sqrt(2*TMath::Pi());
                             Double_t It = I1 + I2;
-                            Double_t mu_eff = (I1*p.mu + I2*s.mu) / It;
-                            Double_t var_eff = (I1*(p.sigma*p.sigma + (p.mu-mu_eff)*(p.mu-mu_eff))
-                                            + I2*(s.sigma*s.sigma + (s.mu-mu_eff)*(s.mu-mu_eff)))
-                                            / It;
+                            Double_t mu_eff = (I1 * p.mu + I2 * s.mu) / It;
+                            Double_t var_eff = (I1 * (p.sigma * p.sigma + (p.mu-mu_eff) * (p.mu-mu_eff)) + I2 * (s.sigma * s.sigma + (s.mu-mu_eff) * (s.mu-mu_eff))) / It;
                             p.sigma = TMath::Sqrt(var_eff);
                             p.mu    = mu_eff;
                             p.A     = It / (TMath::Sqrt(2*TMath::Pi()) * p.sigma);
@@ -750,8 +782,8 @@ void nSigma_Plot_ExclComp(){
                     sum->SetNpx(500); 
                     const Int_t offA1 = 0;
                     const Int_t offA2 = nG;
-                    const Int_t offM  = 2*nG;
-                    const Int_t offS  = 3*nG;
+                    const Int_t offM = 2*nG;
+                    const Int_t offS = 3*nG;
                     const Int_t offP1 = 4*nG;
                     const Int_t offP2 = 4*nG + 1;
                     sum->SetParLimits(offP1, 0, 10.0);
@@ -773,7 +805,7 @@ void nSigma_Plot_ExclComp(){
                             sum->SetParLimits(offM + i, mu0 - muWindow, mu0 + muWindow);
                             sum->SetParameter(offM + i, mu0);
 
-                            sum->SetParLimits(offS + i, sig0*0.5, sig0*2.0);
+                            sum->SetParLimits(offS + i, sig0 * 0.5, sig0 * 2.0);
                             sum->SetParameter(offS + i, sig0);
 
                             Double_t lo, hi;
@@ -791,7 +823,7 @@ void nSigma_Plot_ExclComp(){
                             sum->SetParLimits(offM + i, p.mu - muWindow, p.mu + muWindow);
                             sum->SetParameter(offM + i, p.mu);
 
-                            sum->SetParLimits(offS + i, p.sigma*0.5, p.sigma*2.0);
+                            sum->SetParLimits(offS + i, p.sigma * 0.5, p.sigma * 2.0);
                             sum->SetParameter(offS + i, p.sigma);
                         }
                     }
@@ -814,147 +846,134 @@ void nSigma_Plot_ExclComp(){
 
                     std::vector<Double_t> par(sum->GetNpar());
                     std::vector<Double_t> err(sum->GetNpar());
-                    for(Int_t i=0; i<sum->GetNpar(); ++i)  {
+                    for(Int_t i = 0; i < sum->GetNpar(); ++i)  {
                         par[i] = sum->GetParameter(i);
                         err[i] = sum->GetParError(i);
                     }                    
-
-                    struct BandStats {
-                        Double_t kLeft, kRight;
-                        std::vector<std::vector<Double_t>> frac;
-                        std::vector<Double_t> totCont;
-                        std::vector<Double_t> totContErr;
-                    };
 
                     struct IntDerivs { double dA, dMu, dSig; };
                     auto dGaussInt = [&](double A, double mu, double sig, double a, double b)->IntDerivs {
                         const double ea = std::exp(-0.5 * std::pow((a-mu)/sig, 2.0));
                         const double eb = std::exp(-0.5 * std::pow((b-mu)/sig, 2.0));
                         const double I1 = help->GaussIntegral(1.0, mu, sig, a, b); 
-                        const double dI_dMu  = A * (ea - eb);                      
-                        const double I       = help->GaussIntegral(A,   mu, sig, a, b);
-                        const double dI_dSig = (I/sig) + (A/sig)*((a-mu)*ea - (b-mu)*eb); 
-                        return { I1, dI_dMu, dI_dSig };
+                        const double dI_dMu = A * (ea - eb);                      
+                        const double I = help->GaussIntegral(A, mu, sig, a, b);
+                        const double dI_dSig = (I / sig) + (A / sig)*((a - mu) * ea - (b - mu) * eb); 
+                        return {I1, dI_dMu, dI_dSig};
                     };
 
-                    auto computeBandFractions = [&](Int_t whichHist) -> BandStats {
-                        const Int_t offA = (whichHist==0 ? offA1 : offA2);
-                        const Double_t kLeft = 3.0;
-                        const Double_t kRight = 3.0;
+                    auto computeWindowScan = [&](Int_t whichHist) -> WindowScan {
+                        const Int_t offA = (whichHist == 0 ? offA1 : offA2);
+                        const Int_t offP = (whichHist == 0 ? offP1 : offP2);
 
-                        std::vector<std::vector<Double_t>> frac(nG, std::vector<Double_t>(nG, std::numeric_limits<Double_t>::quiet_NaN()));
-                        std::vector<Double_t> totCont(nG, std::numeric_limits<Double_t>::quiet_NaN());
-                        std::vector<Double_t> totContErr(nG, std::numeric_limits<Double_t>::quiet_NaN());
+                        WindowScan out;
 
-                        auto integrate_sum_others = [&](Int_t ii, Double_t a, Double_t b) -> Double_t {
-                            const Int_t N = 20480;
-                            const Double_t dx = (b - a) / (N - 1);
-                            Double_t acc = 0.0;
-                            for (Int_t t = 0; t < N; ++t) {
-                                const Double_t x = a + t*dx;
-                                const Double_t w = (t==0 || t==N-1) ? 0.5 : 1.0;
-                                Double_t y = 0.0;
-                                for (Int_t j = 0; j < nG; ++j) if (j != ii) {
+                        for (Double_t nsigma : sigmaScan) {
+                            std::vector<std::vector<Double_t>> frac(
+                                nG, std::vector<Double_t>(nG, std::numeric_limits<Double_t>::quiet_NaN())
+                            );
+                            std::vector<Double_t> purity(
+                                nG, std::numeric_limits<Double_t>::quiet_NaN()
+                            );
+                            std::vector<Double_t> contamination(
+                                nG, std::numeric_limits<Double_t>::quiet_NaN()
+                            );
+                            std::vector<Double_t> efficiency(
+                                nG, std::numeric_limits<Double_t>::quiet_NaN()
+                            );
+
+                            for (Int_t ii = 0; ii < nG; ++ii) {
+                                const Double_t Ai   = par[offA + ii];
+                                const Double_t mui  = par[offM + ii];
+                                const Double_t sigi = par[offS + ii];
+
+                                if (!(Ai > 0.0) || !(sigi > 0.0)) continue;
+
+                                const Double_t a = mui - nsigma * sigi;
+                                const Double_t b = mui + nsigma * sigi;
+
+                                std::vector<Double_t> I(nG, 0.0);
+                                Double_t Stot = 0.0;
+
+                                for (Int_t j = 0; j < nG; ++j) {
                                     const Double_t Aj   = par[offA + j];
                                     const Double_t muj  = par[offM + j];
                                     const Double_t sigj = par[offS + j];
-                                    y += Aj * TMath::Gaus(x, muj, sigj, kFALSE);
-                                }
-                                acc += w * y;
-                            }
-                            return acc * dx;
-                        };
 
-                        for (Int_t ii = 0; ii < nG; ++ii) {
-                            const Double_t Ai   = par[offA + ii];
-                            const Double_t mui  = par[offM + ii];
-                            const Double_t sigi = par[offS + ii];
-                            const Double_t a = mui - kLeft;
-                            const Double_t b = mui + kRight;
+                                    if (!(Aj > 0.0) || !(sigj > 0.0)) {
+                                        I[j] = 0.0;
+                                        continue;
+                                    }
 
-                            const Double_t are_i = help->GaussIntegral(Ai, mui, sigi, a, b);
-
-                            for (Int_t j = 0; j < nG; ++j) {
-                                const Double_t Aj   = par[offA + j];
-                                const Double_t muj  = par[offM + j];
-                                const Double_t sigj = par[offS + j];
-                                const Double_t num_j = help->GaussIntegral(Aj, muj, sigj, a, b);
-                                frac[ii][j] = (are_i > 0.0) ? (num_j / are_i) : std::numeric_limits<Double_t>::quiet_NaN();
-                            }
-
-                            if (are_i > 0.0) {
-                                const Double_t S = integrate_sum_others(ii, a, b);
-                                const Double_t R = S / are_i;         
-                                totCont[ii] = R;
-
-                                double varR = 0.0;
-
-                                for (Int_t k = 0; k < nG; ++k) if (k != ii) {
-                                    const double Ak   = par[offA + k];
-                                    const double muk  = par[offM + k];
-                                    const double sigk = par[offS + k];
-                                    auto dK = dGaussInt(Ak, muk, sigk, a, b);
-
-                                    const double gA  = dK.dA   / are_i;
-                                    const double gMu = dK.dMu  / are_i;
-                                    const double gS  = dK.dSig / are_i;
-
-                                    varR += gA  * gA  * err[offA + k] * err[offA + k];
-                                    varR += gMu * gMu * err[offM + k] * err[offM + k];
-                                    varR += gS  * gS  * err[offS + k] * err[offS + k];
+                                    I[j] = help->GaussIntegral(Aj, muj, sigj, a, b);
+                                    Stot += I[j];
                                 }
 
-                                {
-                                    auto dI = dGaussInt(Ai, mui, sigi, a, b);
-                                    const double c = -(R / are_i);
+                                const Double_t B = par[offP] * (b - a);
+                                Stot += B;
 
-                                    const double gA  = c * dI.dA;
-                                    const double gMu = c * dI.dMu;
-                                    const double gS  = c * dI.dSig;
+                                const Double_t Itarget = I[ii];
+                                const Double_t ItargetTot = help->GaussIntegral(Ai, mui, sigi, -1e9, 1e9);
 
-                                    varR += gA  * gA  * err[offA + ii] * err[offA + ii];
-                                    varR += gMu * gMu * err[offM + ii] * err[offM + ii];
-                                    varR += gS  * gS  * err[offS + ii] * err[offS + ii];
+                                if (Stot > 0.0) {
+                                    for (Int_t j = 0; j < nG; ++j) {
+                                        frac[ii][j] = I[j] / Stot;
+                                    }
+
+                                    purity[ii] = Itarget / Stot;
+                                    contamination[ii] = 1.0 - purity[ii];
                                 }
-                                totContErr[ii] = (varR >= 0.0) ? std::sqrt(varR) : std::numeric_limits<Double_t>::quiet_NaN();
+
+                                if (ItargetTot > 0.0) {
+                                    efficiency[ii] = Itarget / ItargetTot;
+                                }
                             }
+
+                            out.push_back(WindowScanEntry{
+                                nsigma,
+                                std::move(frac),
+                                std::move(purity),
+                                std::move(contamination),
+                                std::move(efficiency)
+                            });
                         }
-                        return BandStats{kLeft, kRight, std::move(frac), std::move(totCont), std::move(totContErr)}; 
-                    };
 
+                        return out;
+                    };
+                    
                     auto [D1,N1] = help->PoissonDeviance(h1, 0, par, nG, offA1, offA2, offM, offM, offS, offS, offP1, offP2);
                     auto [D2,N2] = help->PoissonDeviance(h2, 1, par, nG, offA1, offA2, offM, offM, offS, offS, offP1, offP2);
-                    const Double_t D  = D1 + D2;
-                    const Double_t N  = N1 + N2;
-                    const Int_t    k  = 4*nG + 2; 
+                    const Double_t D = D1 + D2;
+                    const Double_t N = N1 + N2;
+                    const Int_t k = 4 * nG + 2; 
 
                     const Double_t chi2 = sum->GetChisquare();
-                    const Int_t    ndf  = sum->GetNDF();
+                    const Int_t ndf  = sum->GetNDF();
                     const Double_t pval = TMath::Prob(chi2, ndf);
 
                     std::vector<Double_t> areas_noK(nG), areas_wK(nG), err_areas_noK(nG), err_areas_wK(nG);
                     const Double_t factor = TMath::Sqrt(2*TMath::Pi());
                     for (Int_t ig = 0; ig < nG; ++ig) {
-                        Double_t A1   = par[offA1 + ig];
-                        Double_t A2   = par[offA2 + ig];
-                        Double_t sig  = par[offS  + ig];
+                        Double_t A1 = par[offA1 + ig];
+                        Double_t A2 = par[offA2 + ig];
+                        Double_t sig = par[offS + ig];
                         Double_t eA1 = err[offA1 + ig];
                         Double_t eA2 = err[offA2 + ig];
-                        Double_t eS  = err[offS  + ig];
+                        Double_t eS = err[offS + ig];
 
-                        areas_noK[ig] = A1  * sig * factor;
-                        areas_wK [ig] = A2  * sig * factor;
+                        areas_noK[ig] = A1 * sig * factor;
+                        areas_wK [ig] = A2 * sig * factor;
 
                         Double_t dFdA = sig * factor;
                         Double_t dFdS = A1 * factor;        
-                        Double_t var_noK = dFdA*dFdA * eA1*eA1+ dFdS*dFdS * eS*eS; 
+                        Double_t var_noK = dFdA*dFdA * eA1*eA1 + dFdS*dFdS * eS*eS; 
                         err_areas_noK[ig] = TMath::Sqrt(var_noK);
 
                         dFdS = A2 * factor;
                         Double_t var_wK = dFdA*dFdA * eA2*eA2 + dFdS*dFdS * eS*eS;
                         err_areas_wK[ig] = TMath::Sqrt(var_wK);
                     }
-                    const Double_t D_over_N = (N   > 0 ? D / N : std::numeric_limits<Double_t>::quiet_NaN());
+                    const Double_t D_over_N = (N > 0 ? D / N : std::numeric_limits<Double_t>::quiet_NaN());
                     const Double_t chi2_over_ndf = (ndf > 0 ? chi2 / ndf : std::numeric_limits<Double_t>::quiet_NaN());
 
                     std::vector<Double_t> fitMeans(nG), fitSigmas(nG);
@@ -962,30 +981,29 @@ void nSigma_Plot_ExclComp(){
                     std::vector<Double_t> e_fitMeans(nG), e_fitSigmas(nG);
                     std::vector<Double_t> e_fitAmps_noExcl(nG), e_fitAmps_wExcl(nG);
 
-                    for (Int_t ig=0; ig<nG; ++ig) {
+                    for (Int_t ig = 0; ig < nG; ++ig) {
                         fitAmps_noExcl[ig] = par[offA1 + ig];
                         fitAmps_wExcl[ig] = par[offA2 + ig];
-                        fitMeans[ig] = par[offM  + ig];
-                        fitSigmas[ig] = par[offS  + ig];
+                        fitMeans[ig] = par[offM + ig];
+                        fitSigmas[ig] = par[offS + ig];
 
                         e_fitAmps_noExcl[ig] = err[offA1 + ig];
                         e_fitAmps_wExcl[ig] = err[offA2 + ig];
-                        e_fitMeans[ig] = err[offM  + ig];
-                        e_fitSigmas[ig] = err[offS  + ig];
+                        e_fitMeans[ig] = err[offM + ig];
+                        e_fitSigmas[ig] = err[offS + ig];
                     }
                     const Double_t bkg_noExcl = par[offP1];   
                     const Double_t bkg_wExcl = par[offP2];
                     const Double_t ebkg_noExcl = err[offP1];
                     const Double_t ebkg_wExcl = err[offP2];
 
-                    auto band_no = computeBandFractions(0); 
-                    auto band_w = computeBandFractions(1); 
+                    auto scan_no = computeWindowScan(0); 
+                    auto scan_w = computeWindowScan(1); 
 
                     if (writeSummaryLog && summaryLog.is_open()) {
                         summaryLog
                             << "mode: " << suffix.Data() << "\n"
                             << "tag: noExcl\n"
-                            << "sigmaExcl: " << sigmaExcl << "\n"
                             << "ref: " << help->pNames[ref] << "\n"
                             << "slice: " << i << "\n"
                             << "pmin: " << pEdges[i] << "\n"
@@ -999,16 +1017,17 @@ void nSigma_Plot_ExclComp(){
                                                     fitAmps_noExcl, e_fitAmps_noExcl,
                                                     areas_noK, err_areas_noK)
                             << "\n"
-                            << "background: " << bkg_noExcl << "±" << ebkg_noExcl << "\n\n"
-                            << "overlap_matrix:\n" << labeled_mat_to_txt(peakLabels, band_no.frac) << "\n"
-                            << "total_cont:     " << vec_to_txt(band_no.totCont) << "\n"
-                            << "total_cont_err: " << vec_to_txt(band_no.totContErr) << "\n\n"
+                            << "background: " << bkg_noExcl << " ± " << ebkg_noExcl << "\n\n"
+                            << "purity_contamination_scan:\n"
+                            << scan_table_to_txt(peakLabels, scan_no)
                             << "----------------------------------------\n\n";
 
                         summaryLog
                             << "mode: " << suffix.Data() << "\n"
                             << "tag: wExcl\n"
-                            << "sigmaExcl: " << sigmaExcl << "\n"
+                            << "KaonExcl: " << (FitKaonExclComp ? "yes" : "no") << "\n"
+                            << "ProtonExcl: " << (FitProtonExclComp ? "yes" : "no") << "\n"
+                            << "ExclSigma: " << sigmaExcl << "\n"
                             << "ref: " << help->pNames[ref] << "\n"
                             << "slice: " << i << "\n"
                             << "pmin: " << pEdges[i] << "\n"
@@ -1022,10 +1041,9 @@ void nSigma_Plot_ExclComp(){
                                                     fitAmps_wExcl, e_fitAmps_wExcl,
                                                     areas_wK, err_areas_wK)
                             << "\n"
-                            << "background: " << bkg_wExcl << "±" << ebkg_wExcl << "\n\n"
-                            << "overlap_matrix:\n" << labeled_mat_to_txt(peakLabels, band_w.frac) << "\n"
-                            << "total_cont:     " << vec_to_txt(band_w.totCont) << "\n"
-                            << "total_cont_err: " << vec_to_txt(band_w.totContErr) << "\n\n"
+                            << "background: " << bkg_wExcl << " ± " << ebkg_wExcl << "\n\n"
+                            << "purity_contamination_scan:\n"
+                            << scan_table_to_txt(peakLabels, scan_w)
                             << "----------------------------------------\n\n";
                     }
 
@@ -1036,16 +1054,16 @@ void nSigma_Plot_ExclComp(){
                     const double bw1 = h1->GetXaxis()->GetBinWidth(1);
                     const double bw2 = h2->GetXaxis()->GetBinWidth(1);
 
-                    for(Int_t ip=0; ip<nPoints; ++ip) {
-                        Double_t x = xMin + ip*dx;
+                    for(Int_t ip = 0; ip < nPoints; ++ip) {
+                        Double_t x = xMin + ip * dx;
                         xv[ip] = x;
                         Double_t yy1 = par[offP1] * bw1;
                         Double_t yy2 = par[offP2] * bw2;
                         for(Int_t ig=0; ig<nG; ++ig) {
                             Double_t A1 = par[offA1 + ig];
                             Double_t A2 = par[offA2 + ig];
-                            Double_t mu = par[offM  + ig];
-                            Double_t sig = par[offS  + ig];
+                            Double_t mu = par[offM + ig];
+                            Double_t sig = par[offS + ig];
                             yy1 += A1 * TMath::Gaus(x, mu, sig, kFALSE) * bw1;
                             yy2 += A2 * TMath::Gaus(x, mu, sig, kFALSE) * bw2;
                         }
@@ -1112,11 +1130,9 @@ void nSigma_Plot_ExclComp(){
                             else if (!pids.empty()) colorPid = pids[0];
 
                             col = (colorPid >= 0) ? help->colors[colorPid] : kGray+2;
-                            label = !pids.empty() ? help->LegendFromPids(pids, help)
-                                                : (raw.Length() ? raw : Form("Peak %d", i+1));
+                            label = !pids.empty() ? help->LegendFromPids(pids, help) : (raw.Length() ? raw : Form("Peak %d", i+1));
                             g1->SetLineColor(col);
                         }
-
                         g1->SetLineStyle(2);
                         g1->SetNpx(500);
 
@@ -1189,8 +1205,7 @@ void nSigma_Plot_ExclComp(){
                             else if (!pids.empty()) colorPid = pids[0];
 
                             col = (colorPid >= 0) ? help->colors[colorPid] : kGray+2;
-                            label = !pids.empty() ? help->LegendFromPids(pids, help)
-                                                : (raw.Length() ? raw : Form("Peak %d", i+1));
+                            label = !pids.empty() ? help->LegendFromPids(pids, help): (raw.Length() ? raw : Form("Peak %d", i+1));
                             g2->SetLineColor(col);
                         }
                         g2->SetLineStyle(2);
