@@ -316,7 +316,7 @@ void nSigma_Plot_ExclComp(){
     const Bool_t interactiveManualPeaks = getenv_bool("INTERACTIVE_MANUAL_PEAKS", manualPredictPeaks);
     
     // logging
-    const Bool_t writeSummaryLog = getenv_bool("WRITE_SUMMARY_LOG", true);
+    const Bool_t writeSummaryLog = true;
 
     // covariance matrix config
     const Double_t eigenThr = 0.0;
@@ -331,7 +331,7 @@ void nSigma_Plot_ExclComp(){
     using PeakPars = std::array<Double_t,4>;
 
     // exclusion scan config
-    const std::vector<Double_t> sigmaExclList = {3.0};
+    const std::vector<Double_t> sigmaExclList = {3.0, 4.0, 5.0, 6.0}; // TOF nSigma exclusion cut values to compare
 
     gROOT->SetBatch(!(manualPredictPeaks && interactiveManualPeaks)); // if manual peak prediction is on, default to interactive mode (unless explicitly disabled)
     gStyle->SetOptStat(0);
@@ -384,29 +384,27 @@ void nSigma_Plot_ExclComp(){
 
         TString suffix = isTPCmode ? "TPC" : "TOF";  
 
-        // species used only for the exclusion cut
-        enum ExclType{KaonExcl = 3, ProtExcl = 4};
-        std::vector<std::pair<ExclType, Bool_t>> modes = {{KaonExcl, FitKaonExclComp}, {ProtExcl, FitProtonExclComp}};
-        for (auto [excl, doThis]: modes) {
-            if(!doThis) continue;
+        if (!FitKaonExclComp && !FitProtonExclComp) return;
+        TString exclName;
+        if (FitKaonExclComp && FitProtonExclComp) exclName = "KaonProtonExcl";
+        else if (FitKaonExclComp) exclName = "KaonExcl";
+        else exclName = "ProtonExcl";
 
-            const Char_t* name = (excl==KaonExcl ? "KaonExcl" : "ProtonExcl");
+        // h_no = inclusive histogram
+        // h_w = same histogram after excluding tracks compatible with 'excl' in TOF
+        std::vector<std::vector<TH1D*>> h_no(nParts, std::vector<TH1D*>(nSteps,nullptr));
+        std::vector<std::vector<TH1D*>> h_w(nParts, std::vector<TH1D*>(nSteps,nullptr));
 
-            // h_no = inclusive histogram
-            // h_w = same histogram after excluding tracks compatible with 'excl' in TOF
-            std::vector<std::vector<TH1D*>> h_no(nParts, std::vector<TH1D*>(nSteps,nullptr));
-            std::vector<std::vector<TH1D*>> h_w(nParts, std::vector<TH1D*>(nSteps,nullptr));
-
-            std::vector<std::vector<TH1D*>> hcm_no(nParts, std::vector<TH1D*>(nSteps,nullptr));
-            std::vector<std::vector<TH1D*>> hcm_w(nParts, std::vector<TH1D*>(nSteps,nullptr));
-            std::vector<std::vector<covarianceMatrix*>> cmObj(nParts, std::vector<covarianceMatrix*>(nSteps,nullptr));
+        std::vector<std::vector<TH1D*>> hcm_no(nParts, std::vector<TH1D*>(nSteps,nullptr));
+        std::vector<std::vector<TH1D*>> hcm_w(nParts, std::vector<TH1D*>(nSteps,nullptr));
+        std::vector<std::vector<covarianceMatrix*>> cmObj(nParts, std::vector<covarianceMatrix*>(nSteps,nullptr));
         
-            for (Int_t pid=0; pid<nParts; ++pid) if (doPid[pid]) {
+        for (Int_t pid=0; pid<nParts; ++pid) if (doPid[pid]) {
                 for (Int_t i=0; i<nSteps; ++i) {
-                    auto name_no = Form("n#sigma_%s %g < p < %g GeV/c (%s-no%s)", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), name);
-                    auto name_w = Form("n#sigma_%s %g < p < %g GeV/c (%s-%.2f-%s)", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), sigmaExcl, name);
-                    auto title_no = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-no%s); n#sigma_{%s}; Counts", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), name, help->pCodes[pid]);
-                    auto title_w = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-%.2f-%s); n#sigma_{%s}; Counts", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), sigmaExcl, name, help->pCodes[pid]);
+                    auto name_no = Form("n#sigma_%s %g < p < %g GeV/c (%s-no%s)", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), exclName.Data());
+                    auto name_w = Form("n#sigma_%s %g < p < %g GeV/c (%s-%.2f-%s)", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), sigmaExcl, exclName.Data());
+                    auto title_no = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-no%s); n#sigma_{%s}; Counts", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), exclName.Data(), help->pCodes[pid]);
+                    auto title_w = Form("n#sigma_{%s} %g < p < %g GeV/c (%s-%.2f-%s); n#sigma_{%s}; Counts", help->pCodes[pid], pEdges[i], pEdges[i+1], suffix.Data(), sigmaExcl, exclName.Data(), help->pCodes[pid]);
                     h_no[pid][i] = new TH1D(name_no, title_no, nBins, xMin, xMax);
                     h_w [pid][i] = new TH1D(name_w, title_w, nBins, xMin, xMax);
                     h_no[pid][i]->SetMarkerStyle(kFullCircle);
@@ -418,8 +416,8 @@ void nSigma_Plot_ExclComp(){
                     h_w[pid][i]->SetMarkerColor(kBlack);
                     h_w[pid][i]->SetLineColor(kBlack);
 
-                    auto name_cm_no = Form("cm_nSTPC_%s_%g_%g_no%s", help->pCodes[pid], pEdges[i], pEdges[i+1], name);
-                    auto name_cm_w  = Form("cm_nSTPC_%s_%g_%g_%s%.2f", help->pCodes[pid], pEdges[i], pEdges[i+1], name, sigmaExcl);
+                    auto name_cm_no = Form("cm_nSTPC_%s_%g_%g_no%s", help->pCodes[pid], pEdges[i], pEdges[i+1], exclName.Data());
+                    auto name_cm_w  = Form("cm_nSTPC_%s_%g_%g_%s%.2f", help->pCodes[pid], pEdges[i], pEdges[i+1], exclName.Data(), sigmaExcl);
 
                     hcm_no[pid][i] = new TH1D(name_cm_no, h_no[pid][i]->GetTitle(), nBins, xMin, xMax);
                     hcm_w [pid][i] = new TH1D(name_cm_w , h_w [pid][i]->GetTitle(), nBins, xMin, xMax);
@@ -432,8 +430,8 @@ void nSigma_Plot_ExclComp(){
                 }
             }       
 
-            // Fill the inclusive / excluded histograms and covariance matrix objects
-            for (Long64_t ev = 0; ev < nEntries; ++ev) {
+        // Fill the inclusive / excluded histograms and covariance matrix objects
+        for (Long64_t ev = 0; ev < nEntries; ++ev) {
                 chain.GetEntry(ev);
                 for (Int_t t = 0; t < NtrkMax; ++t) {
                     Double_t pG = inner[t];
@@ -450,8 +448,11 @@ void nSigma_Plot_ExclComp(){
 
                         h_no[pid][bin]->Fill(val);
 
-                        // Exclusion: keep track only if it is not within sigmaExcl of the excluded species in TOF.
-                        if (TMath::IsNaN(tofNS[excl][t]) || TMath::Abs(tofNS[excl][t])>=sigmaExcl) h_w[pid][bin]->Fill(val);
+                        // Exclusion: keep track only if it is not within sigmaExcl of the excluded species in TOF
+                        const Bool_t passKaon = !FitKaonExclComp || TMath::IsNaN(tofNS[3][t]) || TMath::Abs(tofNS[3][t]) >= sigmaExcl;
+                        const Bool_t passProton = !FitProtonExclComp || TMath::IsNaN(tofNS[4][t]) || TMath::Abs(tofNS[4][t]) >= sigmaExcl;
+                        const Bool_t passExcl = passKaon && passProton;
+                        if (passExcl) h_w[pid][bin]->Fill(val);
 
                         auto nsVals = new std::vector<Double_t>(); 
                         nsVals->reserve(2);
@@ -461,18 +462,16 @@ void nSigma_Plot_ExclComp(){
                         nsVals->clear(); 
                         toadd->clear();
 
-                        // Entry 0 = inclusive histogram, always filled.
+                        // Entry 0 = inclusive histogram, always filled
                         nsVals->push_back(val);  
                         toadd->push_back(true);
 
-                        // Entry 1 = excluded histogram, filled only if the track passes the TOF nSigma exclusion cut.
-                        const Bool_t passExcl = (TMath::IsNaN(tofNS[excl][t]) || TMath::Abs(tofNS[excl][t]) >= sigmaExcl);
+                        // Entry 1 = excluded histogram, filled only if the track passes the TOF nSigma exclusion cut
                         if (passExcl) {
-                            nsVals->push_back(val); 
+                            nsVals->push_back(val);
                             toadd->push_back(true);
-                        }
-                        else{
-                            nsVals->push_back(-999.0); 
+                        } else {
+                            nsVals->push_back(-999.0);
                             toadd->push_back(false);
                         }
                         cmObj[pid][bin]->addEvent(nsVals, toadd);
@@ -480,9 +479,9 @@ void nSigma_Plot_ExclComp(){
                 }
             }
             
-            for (Int_t ref = 0; ref < nParts; ++ref) {
+        for (Int_t ref = 0; ref < nParts; ++ref) {
                 if (!doPid[ref]) continue;
-                TString pdfName = Form("nSigma%s_%s_%sComp-%.2f.pdf", suffix.Data(), help->pCodes[ref], name, sigmaExcl);
+                TString pdfName = Form("nSigma%s_%s_%sComp-%.2f.pdf", suffix.Data(), help->pCodes[ref], exclName.Data(), sigmaExcl);
                 TCanvas* c = new TCanvas("c","", 950, 700);
                 c->SetLogy();
                 c->Print(pdfName + "[");
@@ -490,7 +489,7 @@ void nSigma_Plot_ExclComp(){
                 TString  cmPdf;
                 TCanvas* cCM = nullptr;
                 if (plotCM) {
-                    cmPdf = Form("CM_%s_%s_%s-%.2f.pdf",suffix.Data(), help->pCodes[ref], name, sigmaExcl);
+                    cmPdf = Form("CM_%s_%s_%s-%.2f.pdf",suffix.Data(), help->pCodes[ref], exclName.Data(), sigmaExcl);
                     cCM = new TCanvas(Form("cCM_%s_%s", suffix.Data(), help->pCodes[ref]), "", 800, 700);
                     cCM->SetLeftMargin(0.15);
                     cCM->SetRightMargin(0.15);
@@ -1396,7 +1395,6 @@ void nSigma_Plot_ExclComp(){
                     cCM->Print(cmPdf + "]"); 
                 }
             }
-        }
     };
     // Run over the requested sigma exclusion values
     for (Double_t s : sigmaExclList) {
