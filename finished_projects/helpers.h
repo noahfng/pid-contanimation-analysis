@@ -297,58 +297,98 @@ public:
         func->SetNDF(ndf);
     };
 
-    // Joint fit of two hists with common μ,σ; A2 enforced via A2 = A1*(σ1/σ2)
-    inline void FitHistogramsExclCompByChi2(TH1* h1, TH1* h2, TF1* func, Int_t nG, covarianceMatrix* cm, const std::vector<TH1D*>& cmHists, const Double_t eigenThr, const Double_t nBins) {
-        const Int_t nPar = 4*nG +2;
-        const Int_t offA1 = 0;         // A for h1
-        const Int_t offA2 = nG;        // A for h2
-        const Int_t offM  = 2*nG;      // common μ
-        const Int_t offS  = 3*nG;      // common σ
-        const Int_t offP1 = 4*nG;      // const bg for h1
-        const Int_t offP2 = 4*nG + 1;  // const bg for h2
+    // Joint fit of two histograms with common μ,σ.
+    // For components with tieIntegral[j] = true, enforce equal integrals between spectra.
+    // Since μ and σ are common, this is equivalent to A2[j] = A1[j].
+    inline void FitHistogramsExclCompByChi2(TH1* h1, TH1* h2, TF1* func, Int_t nG, covarianceMatrix* cm, const std::vector<TH1D*>& cmHists, const Double_t eigenThr, const Double_t nBins, const std::vector<Bool_t>& tieIntegral) {
+        const Int_t nPar  = 4*nG + 2;
+        const Int_t offA1 = 0;
+        const Int_t offA2 = nG;
+        const Int_t offM  = 2*nG;
+        const Int_t offS  = 3*nG;
+        const Int_t offP1 = 4*nG;
+        const Int_t offP2 = 4*nG + 1;
 
         auto chi2_fcn = [&](const Double_t* par0) {
             std::vector<Double_t> par(par0, par0 + nPar);
+
+            for (Int_t j = 0; j < nG; ++j) {
+                if (tieIntegral[j]) {
+                    par[offA2 + j] = par[offA1 + j];
+                }
+            }
+
             for (Int_t i = 0; i < nPar; ++i) func->SetParameter(i, par[i]);
-            TVectorD expected = BuildExpectedVector(h1, h2, cm, cmHists, par, nG, offA1, offA2, offM, offM, offS, offS, offP1, offP2, nBins);
-            const Double_t chi2_cov = Chi2_withCM(cm, expected);
-            return chi2_cov;
+
+            TVectorD expected = BuildExpectedVector(
+                h1, h2, cm, cmHists, par, nG,
+                offA1, offA2, offM, offM, offS, offS, offP1, offP2, nBins
+            );
+
+            return Chi2_withCM(cm, expected);
         };
 
-        auto minimizer = std::unique_ptr<ROOT::Math::Minimizer>(ROOT::Math::Factory::CreateMinimizer("Minuit2",""));
+        auto minimizer = std::unique_ptr<ROOT::Math::Minimizer>(
+            ROOT::Math::Factory::CreateMinimizer("Minuit2","")
+        );
         ROOT::Math::Functor fcn(chi2_fcn, nPar);
         minimizer->SetFunction(fcn);
 
-        // Seed + limits
+        Int_t nFreePar = 0;
+
         for (Int_t i = 0; i < nPar; ++i) {
             const char* name = func->GetParName(i);
-            Double_t    val  = func->GetParameter(i);
-            Double_t    err  = func->GetParError(i);
-            Double_t    step = (err>0?err:(fabs(val)*0.1+1e-3));
-            Double_t    lo, up;
+            Double_t val  = func->GetParameter(i);
+            Double_t err  = func->GetParError(i);
+            Double_t step = (err > 0 ? err : (fabs(val)*0.1 + 1e-3));
+
+            Double_t lo, up;
             func->GetParLimits(i, lo, up);
 
-            if (up > lo) {
+            Bool_t isTiedA2 = kFALSE;
+            if (i >= offA2 && i < offA2 + nG) {
+                const Int_t j = i - offA2;
+                if (tieIntegral[j]) {
+                    isTiedA2 = kTRUE;
+                    val = func->GetParameter(offA1 + j);
+                }
+            }
+
+            if (isTiedA2) {
+                minimizer->SetFixedVariable(i, name, val);
+            } else if (up > lo) {
                 minimizer->SetLimitedVariable(i, name, val, step, lo, up);
+                ++nFreePar;
             } else {
                 minimizer->SetVariable(i, name, val, step);
+                ++nFreePar;
             }
         }
-        minimizer->SetMaxFunctionCalls(50000);   
+
+        minimizer->SetMaxFunctionCalls(50000);
         minimizer->SetMaxIterations(50000);
         minimizer->Minimize();
 
         for (Int_t i = 0; i < nPar; ++i) {
             func->SetParameter(i, minimizer->X()[i]);
-            func->SetParError(i, TMath::Sqrt(minimizer->CovMatrix(i, i)));
+            func->SetParError(i, TMath::Sqrt(std::max(0.0, minimizer->CovMatrix(i, i))));
         }
+
+        for (Int_t j = 0; j < nG; ++j) {
+            if (tieIntegral[j]) {
+                func->SetParameter(offA2 + j, func->GetParameter(offA1 + j));
+                func->SetParError(offA2 + j, 0.0);
+            }
+        }
+
         const Double_t chi2 = minimizer->MinValue();
-        const Int_t nb = cm->observations().GetNrows();
-        const Int_t ndf = std::max(1, nb - nPar); 
+        const Int_t nb  = cm->observations().GetNrows();
+        const Int_t ndf = std::max(1, nb - nFreePar);
+
         func->SetChisquare(chi2);
         func->SetNDF(ndf);
     }
-
+    
     // Joint fit with per-hist μ,σ; link A2 to A1 via σ ratio and fix A2 during minimization
     inline void FitHistogramsByChi2(TH1* h1, TH1* h2, TF1* func, Int_t nG, covarianceMatrix* cm, const std::vector<TH1D*>& cmHists, const Double_t eigenThr, const Double_t nBins) {
         const Int_t nPar = 6*nG +2;

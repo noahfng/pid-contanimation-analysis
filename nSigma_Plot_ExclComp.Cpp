@@ -904,7 +904,25 @@ void nSigma_Plot_ExclComp(){
                             sum->SetParameter(offS + i, p.sigma);
                         }
                     }
-                    help->FitHistogramsExclCompByChi2(h1, h2, sum, nG, cmObj[ref][i], std::vector<TH1D*>{hcm_no[ref][i], hcm_w[ref][i]}, eigenThr, nBins);
+                    
+                    std::vector<Bool_t> tieIntegral(nG, kTRUE);
+
+                    for (Int_t ig = 0; ig < (Int_t)nG; ++ig) {
+                        const auto pids = help->PidsFromLabel(peakLabels[ig]);
+
+                        const Bool_t isKaonPeak =
+                            std::find(pids.begin(), pids.end(), 3) != pids.end();
+
+                        const Bool_t isProtonPeak =
+                            std::find(pids.begin(), pids.end(), 4) != pids.end();
+
+                        if ((FitKaonExclComp   && isKaonPeak) ||
+                            (FitProtonExclComp && isProtonPeak)) {
+                            tieIntegral[ig] = kFALSE;
+                        }
+                    }
+
+                    help->FitHistogramsExclCompByChi2(h1, h2, sum, nG, cmObj[ref][i], std::vector<TH1D*>{hcm_no[ref][i], hcm_w[ref][i]}, eigenThr, nBins, tieIntegral);
                     
                     c->Clear();
                     h1->Draw("E1");
