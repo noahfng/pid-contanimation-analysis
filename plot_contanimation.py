@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 # momentum-bin centers [GeV/c]
 P_CENTERS = np.array([0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00, 1.10, 1.20, 1.30], dtype=float)
 
-# half-width of each momentum bin
+# P_ERR
 P_ERR = np.array([0.00] * 10, dtype=float)
 
 # nSigma windows
@@ -187,7 +187,7 @@ def plot_cont_vs_momentum(nsigma=2.0, show_no_veto=True, show_veto=True, title_s
     plt.title(rf"Contamination vs momentum ($\sigma_{{\mathrm{{window}}}} = {nsigma}$)",fontsize=title_size)
 
     plt.axvline(x=0.65, linestyle="--", linewidth=1.5, color="black")
-    plt.text(0.66, y_position, "K → K+p exclusion", rotation=90, fontsize=16)
+    plt.text(0.66, y_position, "K → K+p Exclusion", rotation=90, fontsize=16)
 
     plt.xticks(fontsize=tick_size)
     plt.yticks(fontsize=tick_size)
@@ -322,14 +322,7 @@ def plot_avg_cont_vs_nsigma(mode="yield_weighted", show_no_veto=True, show_veto=
     plt.tight_layout()
     plt.show()
 
-def plot_contamination_difference_all_windows(
-    title_size=20,
-    label_size=18,
-    tick_size=16,
-    legend_size=14,
-    marker_size=6,
-    line_width=1.5,
-):
+def plot_contamination_difference_all_windows(title_size=20, label_size=18, tick_size=16, legend_size=14, marker_size=6, line_width=1.5):
     plt.figure(figsize=(9, 6))
 
     ymax = 0.0
@@ -374,18 +367,7 @@ def plot_contamination_difference_all_windows(
     plt.tight_layout()
     plt.show()
 
-def plot_avg_cont_vs_retained_yield(
-    mode="yield_weighted",
-    show_no_veto=True,
-    show_veto=True,
-    title_size=20,
-    label_size=18,
-    tick_size=16,
-    legend_size=14,
-    marker_size=7,
-    line_width=1.5,
-    annotation_size=13,
-):
+def plot_avg_cont_vs_retained_yield(mode="yield_weighted", show_no_veto=True, show_veto=True, title_size=20, label_size=18, tick_size=16, legend_size=14, marker_size=7, line_width=1.5, annotation_size=13):
     plt.figure(figsize=(9, 6))
 
     e_area = arr(E_AREA)
@@ -512,15 +494,15 @@ validate()
 
 plot_avg_cont_vs_retained_yield(mode="yield_weighted", show_no_veto=True, show_veto=True)
 
-#plot_cont_vs_momentum_all_windows(cfg="no_Exclusion")
-#plot_cont_vs_momentum_all_windows(cfg="Exclusion")
-#
-#plot_cont_vs_momentum(nsigma=0.5, show_no_veto=True, show_veto=True)
-#plot_cont_vs_momentum(nsigma=1.0, show_no_veto=True, show_veto=True)
-#plot_cont_vs_momentum(nsigma=1.5, show_no_veto=True, show_veto=True)
-#plot_cont_vs_momentum(nsigma=2.0, show_no_veto=True, show_veto=True)
-#plot_cont_vs_momentum(nsigma=3.0, show_no_veto=True, show_veto=True)
-#
-#plot_avg_cont_vs_nsigma(mode="yield_weighted", show_no_veto=True, show_veto=True)
-#
-#plot_contamination_difference_all_windows()
+plot_cont_vs_momentum_all_windows(cfg="no_Exclusion")
+plot_cont_vs_momentum_all_windows(cfg="Exclusion")
+
+plot_cont_vs_momentum(nsigma=0.5, show_no_veto=True, show_veto=True)
+plot_cont_vs_momentum(nsigma=1.0, show_no_veto=True, show_veto=True)
+plot_cont_vs_momentum(nsigma=1.5, show_no_veto=True, show_veto=True)
+plot_cont_vs_momentum(nsigma=2.0, show_no_veto=True, show_veto=True)
+plot_cont_vs_momentum(nsigma=3.0, show_no_veto=True, show_veto=True)
+
+plot_avg_cont_vs_nsigma(mode="yield_weighted", show_no_veto=True, show_veto=True)
+
+plot_contamination_difference_all_windows()
