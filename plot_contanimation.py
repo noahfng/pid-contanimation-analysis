@@ -242,7 +242,8 @@ def plot_cont_vs_momentum_all_windows(cfg="no_Exclusion", title_size=20, label_s
 
     plt.xticks(fontsize=tick_size)
     plt.yticks(fontsize=tick_size)
-    plt.ylim(0, 1.05 * ymax)
+    plt.ylim(0, 1.0)
+    plt.yticks(np.linspace(0, 1.0, 6))  
     plt.grid(True, alpha=0.3)
     plt.legend(fontsize=legend_size)
     plt.tight_layout()
@@ -335,13 +336,13 @@ def plot_contamination_difference_all_windows(title_size=20, label_size=18, tick
         cont_after = arr(DATA[ns]["veto"]["cont"])
         err_after  = arr(DATA[ns]["veto"]["cont_err"])
 
-        delta_cont = cont_before - cont_after
-        delta_err = np.sqrt(err_before**2 + err_after**2)
+        ratio = cont_after / cont_before
+        ratio_err = ratio * np.sqrt((err_after / cont_after)**2 + (err_before / cont_before)**2)
 
         plt.errorbar(
             P_CENTERS,
-            delta_cont,
-            yerr=delta_err,
+            ratio,
+            yerr=ratio_err,
             fmt="o-",
             capsize=3,
             markersize=marker_size,
@@ -349,19 +350,19 @@ def plot_contamination_difference_all_windows(title_size=20, label_size=18, tick
             label=rf"$\sigma_{{\mathrm{{window}}}} = {ns}$"
         )
 
-        ymax = max(ymax, np.max(delta_cont + delta_err))
-        ymin = min(ymin, np.min(delta_cont - delta_err))
+        ymax = max(ymax, np.max(ratio + ratio_err))
+        ymin = min(ymin, np.min(ratio - ratio_err))
 
     plt.xlabel(r"$p$ (GeV/$c$)", fontsize=label_size)
-    plt.ylabel("Contamination reduction", fontsize=label_size)
-    plt.title("Contamination reduction from vetoes vs momentum", fontsize=title_size)
+    plt.ylabel(r"Relative contamination ($C_{\mathrm{Excl}} / C_{\mathrm{NoExcl}}$)", fontsize=label_size)  
+    plt.title("Relative contamination after TOF-based exclusion", fontsize=title_size)
 
     plt.axvline(x=0.65, linestyle="--", linewidth=1.5, color="black")
-    plt.text(0.66, ymax*0.7, "K → K+p Exclusion", rotation=90, fontsize=16)
-
+    plt.axhline(1.0, linestyle="--", color="gray", linewidth=1)
+    plt.text(0.66, ymax*0.6, "K → K+p Exclusion", rotation=90, fontsize=16)
     plt.xticks(fontsize=tick_size)
     plt.yticks(fontsize=tick_size)
-    plt.ylim(1.05 * ymin, 1.05 * ymax)
+    plt.ylim(0, 1.05)
     plt.grid(True, alpha=0.3)
     plt.legend(fontsize=legend_size)
     plt.tight_layout()
